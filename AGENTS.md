@@ -58,7 +58,7 @@ The process exits immediately on startup if either variable is missing.
 - `internal/config/` — loads and validates environment-variable configuration
 - `internal/printago/` — Printago REST API client and type definitions
   - `types.go` — `Printer`, `PrinterSlot`, `Material`, `MaterialVariant`
-  - `client.go` — `Client` with methods `GetPrinters`, `GetPrinterSlots`, `GetMaterials`, `GetMaterialVariants`, `UpdatePrinterTags`
+  - `client.go` — `Client` with methods `GetPrinters`, `GetPrinterSlots`, `GetMaterials`, `GetMaterialVariants`, `UpdatePrinterTags`; also exports `ClientInterface` (the interface satisfied by `Client`, used for dependency injection in jobs)
 - `internal/jobs/` — cron job implementations
   - `filament_tagger.go` — `FilamentTaggerJob`
 - `docs/printago-api-swagger.json` — Printago OpenAPI 3.1 spec (do not edit manually)
@@ -68,4 +68,5 @@ The process exits immediately on startup if either variable is missing.
 ## Adding a new job
 
 1. Create `internal/jobs/<name>.go` implementing a `Run()` method.
+   - Accept `printago.ClientInterface` (not `*printago.Client`) so the job is straightforward to unit-test with a mock.
 2. Register it in `cmd/printago-buddy/main.go` with `c.AddJob(schedule, job)`.
