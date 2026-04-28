@@ -14,6 +14,18 @@ It runs cron-like background jobs against the [Printago API](https://developers.
 |-----|----------|-------------|
 | `FilamentTaggerJob` | every minute (`* * * * *`) | Queries all printers and their loaded filaments (AMS slots and external spools), then updates each printer's tags with entries of the form `filament_<snake_case_name>` (e.g. `filament_pla_basic_magenta`). Non-filament tags are preserved. |
 
+## Printago API Calls & Required Permissions
+
+All requests are authenticated with `Authorization: ApiKey <key>` and scoped to a store via `X-Printago-StoreId`. The API key must carry the following permissions:
+
+| Method | Path | Permission | Client method |
+|--------|------|------------|---------------|
+| `GET` | `/v1/printers` | `printer.view` | `GetPrinters` |
+| `GET` | `/v1/printer-slots` | `printer.view` | `GetPrinterSlots` |
+| `GET` | `/v1/materials` | `material.view` | `GetMaterials` |
+| `GET` | `/v1/materials/variants` | `material.view` | `GetMaterialVariants` |
+| `PATCH` | `/v1/printers/{id}` | `printer.edit` | `UpdatePrinterTags` |
+
 ## Commands
 
 **Build**
