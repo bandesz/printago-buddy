@@ -19,10 +19,7 @@ This lets you search and filter printers in Printago by their currently loaded f
 
 ## Requirements
 
-- A [Printago](https://printago.io) account with an API key that has the following permissions:
-  - `printer.view`
-  - `printer.edit`
-  - `material.view`
+- A [Printago](https://printago.io) account with an API key (see [API key permissions](#api-key-permissions) below)
 - Docker (recommended) **or** Go 1.26+
 
 ## Quick start with Docker Compose
@@ -68,6 +65,18 @@ The daemon is configured entirely through environment variables:
 | `PRINTAGO_STORE_ID` | yes | Printago store ID |
 
 The process exits immediately on startup if either variable is missing.
+
+## API key permissions
+
+Create a Printago API key with the following permissions. All three are required — the daemon will fail to function correctly if any are missing.
+
+| Permission | Why it is needed |
+|---|---|
+| `printer.view` | Read the list of printers and their filament slots |
+| `printer.edit` | Write filament tags back to each printer |
+| `material.view` | Resolve slot references to material names and variants |
+
+The key is passed via the `PRINTAGO_API_KEY` environment variable (see [Configuration](#configuration)).
 
 ## Development
 
