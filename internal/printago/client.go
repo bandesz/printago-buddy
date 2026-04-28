@@ -12,18 +12,37 @@ import (
 
 const baseURL = "https://api.printago.io"
 
+// ClientInterface is the interface satisfied by Client. Accepting this
+// interface instead of the concrete type makes callers straightforward to
+// test with a simple test double.
+type ClientInterface interface {
+	GetPrinters(ctx context.Context) ([]Printer, error)
+	GetPrinterSlots(ctx context.Context) ([]PrinterSlot, error)
+	GetMaterials(ctx context.Context) ([]Material, error)
+	GetMaterialVariants(ctx context.Context) ([]MaterialVariant, error)
+	UpdatePrinterTags(ctx context.Context, printerID string, tags []string) error
+}
+
 // Client is an HTTP client for the Printago REST API.
 type Client struct {
 	apiKey     string
 	storeID    string
+	base       string
 	httpClient *http.Client
 }
 
 // NewClient creates a new Printago API client.
 func NewClient(apiKey, storeID string) *Client {
+	return NewClientWithBaseURL(apiKey, storeID, baseURL)
+}
+
+// NewClientWithBaseURL creates a Client that sends requests to the given base
+// URL instead of the default production endpoint. Useful for tests.
+func NewClientWithBaseURL(apiKey, storeID, url string) *Client {
 	return &Client{
 		apiKey:  apiKey,
 		storeID: storeID,
+		base:    url,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
@@ -42,7 +61,7 @@ func (c *Client) do(ctx context.Context, method, path string, body any, dst any)
 		bodyReader = bytes.NewReader(b)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, baseURL+path, bodyReader)
+	req, err := http.NewRequestWithContext(ctx, method, c.base+path, bodyReader)
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}

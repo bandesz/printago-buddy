@@ -22,11 +22,11 @@ var nonAlphanumRe = regexp.MustCompile(`[^a-z0-9]+`)
 // updates each printer's tags so that every AMS slot and external spool is
 // represented by a tag of the form "filament_<normalised_name>".
 type FilamentTaggerJob struct {
-	client *printago.Client
+	client printago.ClientInterface
 }
 
 // NewFilamentTaggerJob creates a new FilamentTaggerJob backed by the given API client.
-func NewFilamentTaggerJob(client *printago.Client) *FilamentTaggerJob {
+func NewFilamentTaggerJob(client printago.ClientInterface) *FilamentTaggerJob {
 	return &FilamentTaggerJob{client: client}
 }
 
