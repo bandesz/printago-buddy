@@ -1,6 +1,6 @@
 services:
   printago-buddy:
-    image: printago-buddy:${IMAGE_TAG:-latest}
+    image: bandesz/printago-buddy:${IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: Dockerfile
