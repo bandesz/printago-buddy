@@ -1,3 +1,4 @@
+// Package printago provides an HTTP client for the Printago REST API.
 package printago
 
 import (

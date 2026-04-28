@@ -1,0 +1,55 @@
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - errcheck       # unchecked errors
+    - govet          # suspicious constructs (shadow, printf mismatches, etc.)
+    - staticcheck    # staticcheck suite (SA, S, QF, ST rules)
+    - unused         # unused code
+    - ineffassign    # assignments whose values are never used
+    - revive         # drop-in golint replacement
+    - gocritic       # opinionated checks
+    - gosec          # security issues
+    - misspell       # spelling mistakes in comments/strings
+    - exhaustive     # exhaustive enum switches
+    - noctx          # http requests without context
+  settings:
+    govet:
+      enable:
+        - shadow
+    revive:
+      rules:
+        - name: error-return
+        - name: error-strings
+        - name: error-naming
+        # Doc-comment enforcement is too noisy for internal packages.
+        - name: exported
+          disabled: true
+        - name: package-comments
+          disabled: true
+        # Renaming unused handler params to _ adds churn without safety benefit.
+        - name: unused-parameter
+          disabled: true
+    misspell:
+      locale: US
+  exclusions:
+    presets:
+      # Silences revive doc-comment rules (exported, package-comments, comment format).
+      - comments
+      # Silences errcheck on Close/Flush/print — covers deferred resp.Body.Close.
+      - std-error-handling
+      # Silences gosec G104 (unhandled errors) already covered by errcheck.
+      - legacy
+    rules:
+      # errcheck in test helpers is low-signal; production paths are what matter.
+      - path: '(.+)_test\.go'
+        linters:
+          - errcheck
+
+formatters:
+  enable:
+    - goimports      # import ordering and gofmt-style formatting
+
+issues:
+  max-same-issues: 0

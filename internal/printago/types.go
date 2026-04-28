@@ -21,13 +21,13 @@ type PrinterSlot struct {
 
 // Material represents a filament material (e.g. "PLA Basic" by Bambu).
 type Material struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID    string `json:"id"`
+	Name  string `json:"name"`
 	Brand string `json:"brand"`
-	Type string `json:"type"`
+	Type  string `json:"type"`
 }
 
-// MaterialVariant represents a specific variant of a material (e.g. colour "Magenta").
+// MaterialVariant represents a specific variant of a material (e.g. color "Magenta").
 type MaterialVariant struct {
 	ID         string `json:"id"`
 	MaterialID string `json:"materialId"`

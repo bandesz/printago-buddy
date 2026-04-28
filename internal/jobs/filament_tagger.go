@@ -1,3 +1,4 @@
+// Package jobs contains the cron job implementations for printago-buddy.
 package jobs
 
 import (
