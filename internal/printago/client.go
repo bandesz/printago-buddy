@@ -25,6 +25,7 @@ type ClientInterface interface {
 	GetPrintJobs(ctx context.Context) ([]PrintJob, error)
 	GetPartMaterialAssignments(ctx context.Context, partID string) ([]PartMaterialAssignment, error)
 	CancelPrintJob(ctx context.Context, jobID string) error
+	PrioritizePrintJob(ctx context.Context, jobID string) error
 }
 
 // Client is an HTTP client for the Printago REST API.
@@ -161,4 +162,10 @@ func (c *Client) GetPrintJobs(ctx context.Context) ([]PrintJob, error) {
 func (c *Client) CancelPrintJob(ctx context.Context, jobID string) error {
 	body := map[string]any{"printJobIds": []string{jobID}}
 	return c.do(ctx, http.MethodPatch, "/v1/print-jobs/cancel", body, nil)
+}
+
+// PrioritizePrintJob moves a single print job to the front of the queue.
+func (c *Client) PrioritizePrintJob(ctx context.Context, jobID string) error {
+	body := map[string]any{"printJobIds": []string{jobID}}
+	return c.do(ctx, http.MethodPatch, "/v1/print-jobs/move-to-queue-front", body, nil)
 }

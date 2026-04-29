@@ -44,7 +44,8 @@ func (m *mockClient) GetPrintJobs(_ context.Context) ([]printago.PrintJob, error
 func (m *mockClient) GetPartMaterialAssignments(_ context.Context, _ string) ([]printago.PartMaterialAssignment, error) {
 	return nil, nil
 }
-func (m *mockClient) CancelPrintJob(_ context.Context, _ string) error { return nil }
+func (m *mockClient) CancelPrintJob(_ context.Context, _ string) error     { return nil }
+func (m *mockClient) PrioritizePrintJob(_ context.Context, _ string) error { return nil }
 func (m *mockClient) UpdatePrinterTags(_ context.Context, printerID string, tags []string) error {
 	idx := len(m.updateTagsCalls)
 	m.updateTagsCalls = append(m.updateTagsCalls, updateTagsCall{printerID: printerID, tags: tags})

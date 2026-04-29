@@ -125,6 +125,31 @@ func (s *Server) handleQueue(w http.ResponseWriter, r *http.Request) {
 // validJobID matches the Printago job ID format: 24 lowercase hex characters.
 var validJobID = regexp.MustCompile(`^[a-z0-9]{24}$`)
 
+func (s *Server) handlePrioritizeJob(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 1024)
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	jobID := r.FormValue("id")
+	if !validJobID.MatchString(jobID) {
+		http.Redirect(w, r, "/queue?error="+url.QueryEscape("invalid job id"), http.StatusSeeOther)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	if err := s.client.PrioritizePrintJob(ctx, jobID); err != nil {
+		slog.Error("web: failed to prioritize print job", "job", jobID, "error", err) //nolint:gosec // jobID is validated against ^[a-z0-9]{24}$ above
+		http.Redirect(w, r, "/queue?error="+url.QueryEscape("Failed to prioritize job: "+err.Error()), http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, "/queue", http.StatusSeeOther)
+}
+
 func (s *Server) handleCancelJob(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

@@ -37,12 +37,18 @@
     .icon-full    { color: #16a34a; font-weight: 700; font-size: 15px; line-height: 1; }
     .icon-partial { color: #ea580c; font-weight: 700; font-size: 15px; line-height: 1; }
     .no-match { color: #94a3b8; font-size: 13px; font-style: italic; }
-    .col-actions { width: 80px; text-align: right; }
+    .col-actions { width: 130px; text-align: right; }
     .btn-cancel {
         background: none; border: 1px solid #fca5a5; color: #dc2626;
         font-size: 12px; padding: 4px 10px; border-radius: 5px; cursor: pointer;
     }
     .btn-cancel:hover { background: #fef2f2; }
+    .btn-prioritize {
+        background: none; border: 1px solid #93c5fd; color: #1d4ed8;
+        font-size: 12px; padding: 4px 10px; border-radius: 5px; cursor: pointer;
+        margin-bottom: 4px;
+    }
+    .btn-prioritize:hover { background: #eff6ff; }
     .filament-chip {
         position: relative;
         display: inline-block; width: 12px; height: 16px;
@@ -130,6 +136,10 @@
                 </div>
             </td>
             <td class="col-actions">
+                <form method="POST" action="/prioritize-job">
+                    <input type="hidden" name="id" value="{{.Job.ID}}">
+                    <button type="submit" class="btn-prioritize">Prioritize</button>
+                </form>
                 <form method="POST" action="/cancel-job" onsubmit="return confirm('Cancel this job?')">
                     <input type="hidden" name="id" value="{{.Job.ID}}">
                     <button type="submit" class="btn-cancel">Cancel</button>
@@ -184,6 +194,10 @@
                 </div>
             </td>
             <td class="col-actions">
+                <form method="POST" action="/prioritize-job">
+                    <input type="hidden" name="id" value="{{.Job.ID}}">
+                    <button type="submit" class="btn-prioritize">Prioritize</button>
+                </form>
                 <form method="POST" action="/cancel-job" onsubmit="return confirm('Cancel this job?')">
                     <input type="hidden" name="id" value="{{.Job.ID}}">
                     <button type="submit" class="btn-cancel">Cancel</button>
