@@ -24,6 +24,7 @@ type ClientInterface interface {
 	UpdatePrinterTags(ctx context.Context, printerID string, tags []string) error
 	GetPrintJobs(ctx context.Context) ([]PrintJob, error)
 	GetPartMaterialAssignments(ctx context.Context, partID string) ([]PartMaterialAssignment, error)
+	CancelPrintJob(ctx context.Context, jobID string) error
 }
 
 // Client is an HTTP client for the Printago REST API.
@@ -154,4 +155,10 @@ func (c *Client) GetPrintJobs(ctx context.Context) ([]PrintJob, error) {
 		return nil, err
 	}
 	return jobs, nil
+}
+
+// CancelPrintJob cancels a single queued or in-progress print job.
+func (c *Client) CancelPrintJob(ctx context.Context, jobID string) error {
+	body := map[string]any{"printJobIds": []string{jobID}}
+	return c.do(ctx, http.MethodPatch, "/v1/print-jobs/cancel", body, nil)
 }

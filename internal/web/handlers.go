@@ -4,6 +4,8 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"regexp"
 	"sync"
 	"time"
 
@@ -37,6 +39,9 @@ func (s *Server) handleQueue(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	data := queuePageData{Page: "queue"}
+	if flash := r.URL.Query().Get("error"); flash != "" {
+		data.Err = flash
+	}
 
 	jobs, err := s.client.GetPrintJobs(ctx)
 	if err != nil {
@@ -115,6 +120,34 @@ func (s *Server) handleQueue(w http.ResponseWriter, r *http.Request) {
 	data.NormalEntries = normalEntries
 	data.LowEntries = lowEntries
 	s.render(w, s.queueTmpl, data)
+}
+
+// validJobID matches the Printago job ID format: 24 lowercase hex characters.
+var validJobID = regexp.MustCompile(`^[a-z0-9]{24}$`)
+
+func (s *Server) handleCancelJob(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 1024)
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	jobID := r.FormValue("id")
+	if !validJobID.MatchString(jobID) {
+		http.Redirect(w, r, "/queue?error="+url.QueryEscape("invalid job id"), http.StatusSeeOther)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	if err := s.client.CancelPrintJob(ctx, jobID); err != nil {
+		slog.Error("web: failed to cancel print job", "job", jobID, "error", err) //nolint:gosec // jobID is validated against ^[a-z0-9]{24}$ above
+		http.Redirect(w, r, "/queue?error="+url.QueryEscape("Failed to cancel job: "+err.Error()), http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, "/queue", http.StatusSeeOther)
 }
 
 // groupSlotsByPrinter indexes printer slots by printer ID.

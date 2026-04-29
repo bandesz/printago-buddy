@@ -46,6 +46,7 @@ func (s *Server) Start() error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.handleIndex)
 	mux.HandleFunc("/queue", s.handleQueue)
+	mux.HandleFunc("/cancel-job", s.handleCancelJob)
 
 	addr := fmt.Sprintf(":%d", s.port)
 	slog.Info("web server started", "addr", "http://localhost"+addr)

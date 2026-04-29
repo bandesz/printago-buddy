@@ -58,6 +58,7 @@ func (s *stubClient) GetPartMaterialAssignments(_ context.Context, partID string
 	s.partAssignmentCalls[partID]++
 	return s.partAssignments[partID], nil
 }
+func (s *stubClient) CancelPrintJob(_ context.Context, _ string) error { return nil }
 
 // ---- GetPrinters ----
 

@@ -111,6 +111,11 @@ func (c *CachingClient) GetPrintJobs(ctx context.Context) ([]PrintJob, error) {
 	return c.inner.GetPrintJobs(ctx)
 }
 
+// CancelPrintJob delegates directly to the inner client (not cached).
+func (c *CachingClient) CancelPrintJob(ctx context.Context, jobID string) error {
+	return c.inner.CancelPrintJob(ctx, jobID)
+}
+
 // GetMaterials returns all materials, fetching from the API only when the
 // cached result has expired.
 func (c *CachingClient) GetMaterials(ctx context.Context) ([]Material, error) {
