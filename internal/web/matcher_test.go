@@ -44,7 +44,7 @@ func TestRankPrinters_fullMatch(t *testing.T) {
 		slotFor("p2", "", ""),
 	)
 
-	got := web.RankPrinters(assignments, printers, sbp)
+	got := web.RankPrinters(assignments, printers, sbp, nil, nil)
 
 	if len(got) != 1 {
 		t.Fatalf("got %d candidates, want 1", len(got))
@@ -65,7 +65,7 @@ func TestRankPrinters_partialMatch(t *testing.T) {
 	printers := []printago.Printer{printer("p1", "Alpha")}
 	sbp := slotMap(slotFor("p1", "var-a", "mat-a"))
 
-	got := web.RankPrinters(assignments, printers, sbp)
+	got := web.RankPrinters(assignments, printers, sbp, nil, nil)
 
 	if len(got) != 1 {
 		t.Fatalf("got %d candidates, want 1", len(got))
@@ -84,7 +84,7 @@ func TestRankPrinters_noRequirements(t *testing.T) {
 		printer("p3", "Beta"), printer("p2", "Gamma"),
 	}
 
-	got := web.RankPrinters(nil, printers, nil)
+	got := web.RankPrinters(nil, printers, nil, nil, nil)
 
 	if len(got) != 3 {
 		t.Fatalf("got %d candidates, want 3", len(got))
@@ -112,7 +112,7 @@ func TestRankPrinters_maxThree(t *testing.T) {
 		slotFor("p3", "var-a", "mat-a"), slotFor("p4", "var-a", "mat-a"),
 	)
 
-	got := web.RankPrinters(assignments, printers, sbp)
+	got := web.RankPrinters(assignments, printers, sbp, nil, nil)
 
 	if len(got) > 3 {
 		t.Errorf("got %d candidates, want at most 3", len(got))
@@ -130,7 +130,7 @@ func TestRankPrinters_fullBeforePartial(t *testing.T) {
 		slotFor("p2", "var-a", "mat-a"), slotFor("p2", "var-b", "mat-b"),
 	)
 
-	got := web.RankPrinters(assignments, printers, sbp)
+	got := web.RankPrinters(assignments, printers, sbp, nil, nil)
 
 	if len(got) != 2 {
 		t.Fatalf("got %d candidates, want 2", len(got))
@@ -145,7 +145,7 @@ func TestRankPrinters_noMatch(t *testing.T) {
 	printers := []printago.Printer{printer("p1", "Alpha")}
 	sbp := slotMap(slotFor("p1", "var-other", "mat-other"))
 
-	got := web.RankPrinters(assignments, printers, sbp)
+	got := web.RankPrinters(assignments, printers, sbp, nil, nil)
 
 	if len(got) != 0 {
 		t.Errorf("got %d candidates, want 0", len(got))
@@ -159,7 +159,7 @@ func TestRankPrinters_variantIDRequiredWhenSet(t *testing.T) {
 	printers := []printago.Printer{printer("p1", "Alpha")}
 	sbp := slotMap(slotFor("p1", "", "mat-a")) // slot has materialId but not variantId
 
-	got := web.RankPrinters(assignments, printers, sbp)
+	got := web.RankPrinters(assignments, printers, sbp, nil, nil)
 
 	if len(got) != 0 {
 		t.Errorf("got %d candidates, want 0: variantId mismatch should not fall back to materialId", len(got))
@@ -167,13 +167,13 @@ func TestRankPrinters_variantIDRequiredWhenSet(t *testing.T) {
 }
 
 // When no variantId is set in the assignment, materialId serves as the
-// coarser fallback (brand + type, any colour).
+// coarser fallback (brand + type, any color).
 func TestRankPrinters_materialIDFallbackWhenNoVariant(t *testing.T) {
 	assignments := []printago.PartMaterialAssignment{assignment("", "mat-a")}
 	printers := []printago.Printer{printer("p1", "Alpha")}
 	sbp := slotMap(slotFor("p1", "", "mat-a"))
 
-	got := web.RankPrinters(assignments, printers, sbp)
+	got := web.RankPrinters(assignments, printers, sbp, nil, nil)
 
 	if len(got) != 1 {
 		t.Fatalf("got %d candidates, want 1", len(got))

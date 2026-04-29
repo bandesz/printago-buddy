@@ -11,9 +11,10 @@ import (
 )
 
 type queueEntry struct {
-	Index    int
-	Job      printago.PrintJob
-	Printers []PrinterCandidate
+	Index        int
+	Job          printago.PrintJob
+	JobFilaments []MatchedFilament
+	Printers     []PrinterCandidate
 }
 
 type queuePageData struct {
@@ -61,15 +62,47 @@ func (s *Server) handleQueue(w http.ResponseWriter, r *http.Request) {
 	}
 	slotsByPrinter := groupSlotsByPrinter(slots)
 
+	materials, err := s.client.GetMaterials(ctx)
+	if err != nil {
+		slog.Error("web: failed to fetch materials", "error", err)
+		data.Err = "Failed to load materials: " + err.Error()
+		s.render(w, s.queueTmpl, data)
+		return
+	}
+	materialsByID := make(map[string]printago.Material, len(materials))
+	for _, m := range materials {
+		materialsByID[m.ID] = m
+	}
+
+	variants, err := s.client.GetMaterialVariants(ctx)
+	if err != nil {
+		slog.Error("web: failed to fetch material variants", "error", err)
+		data.Err = "Failed to load material variants: " + err.Error()
+		s.render(w, s.queueTmpl, data)
+		return
+	}
+	variantsByID := make(map[string]printago.MaterialVariant, len(variants))
+	for _, v := range variants {
+		variantsByID[v.ID] = v
+	}
+
 	// Fetch part material assignments for all jobs concurrently.
 	assignmentsMap := fetchAllPartAssignments(ctx, s.client, jobs)
 
 	entries := make([]queueEntry, 0, len(jobs))
 	for i, job := range jobs {
+		jobAssignments := assignmentsMap[job.ID]
+		jobFilaments := make([]MatchedFilament, 0, len(jobAssignments))
+		for _, a := range jobAssignments {
+			if a.VariantID != "" || a.MaterialID != "" {
+				jobFilaments = append(jobFilaments, buildMatchedFilament(a, variantsByID, materialsByID))
+			}
+		}
 		entries = append(entries, queueEntry{
-			Index:    i + 1,
-			Job:      job,
-			Printers: RankPrinters(assignmentsMap[job.ID], printers, slotsByPrinter),
+			Index:        i + 1,
+			Job:          job,
+			JobFilaments: jobFilaments,
+			Printers:     RankPrinters(jobAssignments, printers, slotsByPrinter, variantsByID, materialsByID),
 		})
 	}
 	data.Entries = entries

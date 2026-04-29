@@ -20,13 +20,37 @@
     tbody tr:last-child td { border-bottom: none; }
     tbody tr:hover td { background: #f8fafc; }
     .col-order { width: 56px; color: #94a3b8; font-size: 13px; text-align: center; }
-    .job-name { font-weight: 600; font-size: 14px; }
+    .job-name { font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
     .job-label { color: #64748b; font-size: 12px; margin-top: 3px; }
     .printer-list { display: flex; flex-direction: column; gap: 5px; }
     .printer-entry { display: flex; align-items: center; gap: 7px; font-size: 13px; }
     .icon-full    { color: #16a34a; font-weight: 700; font-size: 15px; line-height: 1; }
     .icon-partial { color: #ea580c; font-weight: 700; font-size: 15px; line-height: 1; }
     .no-match { color: #94a3b8; font-size: 13px; font-style: italic; }
+    .filament-chip {
+        position: relative;
+        display: inline-block; width: 12px; height: 16px;
+        border-radius: 3px; border: 1px solid rgba(0,0,0,0.18);
+        flex-shrink: 0; cursor: default;
+    }
+    .filament-chip::after {
+        content: attr(data-tooltip);
+        position: absolute;
+        bottom: calc(100% + 5px);
+        left: 50%;
+        transform: translateX(-50%);
+        background: #1e293b;
+        color: #fff;
+        font-size: 11px;
+        font-weight: 500;
+        white-space: nowrap;
+        padding: 4px 8px;
+        border-radius: 4px;
+        pointer-events: none;
+        opacity: 0;
+        z-index: 100;
+    }
+    .filament-chip:hover::after { opacity: 1; }
 </style>
 
 <h1>Print Queue</h1>
@@ -47,7 +71,12 @@
         <tr>
             <td class="col-order">{{.Index}}</td>
             <td>
-                <div class="job-name">{{.Job.PartName}}</div>
+                <div class="job-name">
+                    <span>{{.Job.PartName}}</span>
+                    {{range .JobFilaments}}
+                    <span class="filament-chip" style="background: {{.ColorCSS}};" data-tooltip="{{.Tooltip}}"></span>
+                    {{end}}
+                </div>
                 <div class="job-label">{{.Job.Label}}</div>
             </td>
             <td>
@@ -61,6 +90,9 @@
                             <span class="icon-partial">✓</span>
                             {{end}}
                             <span>{{.Printer.Name}}</span>
+                            {{range .MatchedFilaments}}
+                            <span class="filament-chip" style="background: {{.ColorCSS}};" data-tooltip="{{.Tooltip}}"></span>
+                            {{end}}
                         </div>
                         {{end}}
                     {{else}}

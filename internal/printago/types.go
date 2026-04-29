@@ -32,6 +32,9 @@ type MaterialVariant struct {
 	ID         string `json:"id"`
 	MaterialID string `json:"materialId"`
 	Name       string `json:"name"`
+	// Color is a hex RGBA color string ("#RRGGBBAA"), optionally multiple colors
+	// separated by semicolons for multi-color filaments, e.g. "#FF0000FF;#0000FFFF".
+	Color *string `json:"color"`
 }
 
 // PrintJob represents a print job in the Printago queue.
