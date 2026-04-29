@@ -63,7 +63,10 @@
     .filament-chip:hover::after { opacity: 1; }
 </style>
 
-<h1>Print Queue</h1>
+<div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:20px;">
+    <h1 style="margin-bottom:0;">Print Queue</h1>
+    <span id="last-refresh" style="font-size:12px; color:#94a3b8;"></span>
+</div>
 
 {{if .Err}}<div class="error">{{.Err}}</div>{{end}}
 
@@ -175,4 +178,15 @@
 {{else}}{{if not .Err}}
 <p class="empty">No pending print jobs.</p>
 {{end}}{{end}}
+<script>
+    function updateTimestamp() {
+        const now = new Date();
+        document.getElementById('last-refresh').textContent =
+            'Last refreshed: ' + now.toLocaleTimeString();
+    }
+    updateTimestamp();
+    setTimeout(function tick() {
+        location.reload();
+    }, 10000);
+</script>
 {{end}}
