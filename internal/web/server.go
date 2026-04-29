@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/bandesz/printago-buddy/internal/printago"
 )
@@ -48,7 +49,14 @@ func (s *Server) Start() error {
 
 	addr := fmt.Sprintf(":%d", s.port)
 	slog.Info("web server started", "addr", "http://localhost"+addr)
-	return http.ListenAndServe(addr, mux)
+	srv := &http.Server{
+		Addr:         addr,
+		Handler:      mux,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+	return srv.ListenAndServe()
 }
 
 func (s *Server) render(w http.ResponseWriter, tmpl *template.Template, data any) {
