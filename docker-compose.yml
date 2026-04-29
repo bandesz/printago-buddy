@@ -7,6 +7,8 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    ports:
+      - "${WEB_PORT:-8889}:${WEB_PORT:-8889}"
     logging:
       driver: json-file
       options:
@@ -20,4 +22,3 @@ services:
         reservations:
           cpus: "0.05"
           memory: 16M
-    # No ports — this is a background daemon with no inbound traffic.

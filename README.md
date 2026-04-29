@@ -17,6 +17,16 @@ Any tags that do **not** start with `filament_` are preserved unchanged, so your
 
 This lets you search and filter printers in Printago by their currently loaded filament — for example, to find all printers that have a specific colour or material type loaded.
 
+### Print Queue UI
+
+A lightweight web server runs alongside the cron jobs and exposes a read/write queue management interface at `http://localhost:8889` (port is configurable via `WEB_PORT`).
+
+- **Queue view** — lists all pending print jobs grouped into normal-priority and low-priority sections, each with a thumbnail preview and the filament colours required by the job.
+- **Printer matching** — for every queued job the UI shows up to three best-matching printers, ranked by how many of the job's filament requirements they satisfy.
+- **Cancel** — removes a job from the queue.
+- **Prioritise** — moves a job to the front of the queue.
+- **Auto-refresh** — the page refreshes itself every 10 seconds and displays a last-refreshed timestamp.
+
 ## Requirements
 
 - A [Printago](https://printago.io) account with an API key (see [API key permissions](#api-key-permissions) below)
@@ -52,6 +62,7 @@ The container will restart automatically unless explicitly stopped.
 docker run -d --restart unless-stopped \
   -e PRINTAGO_API_KEY=your_api_key_here \
   -e PRINTAGO_STORE_ID=your_store_id_here \
+  -p 8889:8889 \
   bandesz/printago-buddy:latest
 ```
 
@@ -63,18 +74,23 @@ The daemon is configured entirely through environment variables:
 |---|---|---|
 | `PRINTAGO_API_KEY` | yes | Printago API key |
 | `PRINTAGO_STORE_ID` | yes | Printago store ID |
+| `WEB_PORT` | no | Port for the web UI (default: `8889`) |
 
-The process exits immediately on startup if either variable is missing.
+The process exits immediately on startup if either required variable is missing.
 
 ## API key permissions
 
-Create a Printago API key with the following permissions. All three are required — the daemon will fail to function correctly if any are missing.
+Create a Printago API key with the following permissions. All are required — the daemon will fail to function correctly if any are missing.
 
 | Permission | Why it is needed |
 |---|---|
 | `printer.view` | Read the list of printers and their filament slots |
 | `printer.edit` | Write filament tags back to each printer |
 | `material.view` | Resolve slot references to material names and variants |
+| `queue.view` | Fetch the pending print job queue for the web UI |
+| `part.view` | Read per-job filament requirements for printer matching |
+| `queue.manage` | Cancel jobs from the web UI |
+| `queue.override` | Move a job to the front of the queue |
 
 The key is passed via the `PRINTAGO_API_KEY` environment variable (see [Configuration](#configuration)).
 
@@ -113,8 +129,9 @@ This will:
 cmd/printago-buddy/   entry point
 internal/
   config/             environment variable loading
-  printago/           Printago REST API client and types
+  printago/           Printago REST API client, types, and caching layer
   jobs/               cron job implementations
+  web/                HTTP server and print queue UI
 docs/                 Printago OpenAPI spec (reference only)
 ```
 

@@ -25,6 +25,10 @@ All requests are authenticated with `Authorization: ApiKey <key>` and scoped to 
 | `GET` | `/v1/materials` | `material.view` | `GetMaterials` |
 | `GET` | `/v1/materials/variants` | `material.view` | `GetMaterialVariants` |
 | `PATCH` | `/v1/printers/{id}` | `printer.edit` | `UpdatePrinterTags` |
+| `GET` | `/v1/print-jobs` | `queue.view` | `GetPrintJobs` |
+| `GET` | `/v1/part-material-assignments` | `part.view` | `GetPartMaterialAssignments` |
+| `PATCH` | `/v1/print-jobs/cancel` | `queue.manage` | `CancelPrintJob` |
+| `PATCH` | `/v1/print-jobs/move-to-queue-front` | `queue.override` | `PrioritizePrintJob` |
 
 ## Commands
 
@@ -61,18 +65,25 @@ The daemon is configured exclusively via environment variables:
 |----------|----------|-------------|
 | `PRINTAGO_API_KEY` | yes | Printago API key (prefixed `ApiKey` internally) |
 | `PRINTAGO_STORE_ID` | yes | Printago store ID |
+| `WEB_PORT` | no | Port for the web UI (default: `8889`) |
 
-The process exits immediately on startup if either variable is missing.
+The process exits immediately on startup if either required variable is missing.
 
 ## Code Structure
 
-- `cmd/printago-buddy/main.go` — entry point; loads config, registers cron jobs, blocks on `SIGINT`/`SIGTERM`, shuts down gracefully
-- `internal/config/` — loads and validates environment-variable configuration
+- `cmd/printago-buddy/main.go` — entry point; loads config, wraps the API client with `CachingClient`, registers cron jobs, starts the web server, blocks on `SIGINT`/`SIGTERM`, shuts down gracefully
+- `internal/config/` — loads and validates environment-variable configuration (including optional `WEB_PORT`)
 - `internal/printago/` — Printago REST API client and type definitions
-  - `types.go` — `Printer`, `PrinterSlot`, `Material`, `MaterialVariant`
-  - `client.go` — `Client` with methods `GetPrinters`, `GetPrinterSlots`, `GetMaterials`, `GetMaterialVariants`, `UpdatePrinterTags`; also exports `ClientInterface` (the interface satisfied by `Client`, used for dependency injection in jobs)
+  - `types.go` — `Printer`, `PrinterSlot`, `Material`, `MaterialVariant`, `PrintJob`, `PartMaterialAssignment` and related types
+  - `client.go` — `Client` with methods `GetPrinters`, `GetPrinterSlots`, `GetMaterials`, `GetMaterialVariants`, `UpdatePrinterTags`, `GetPrintJobs`, `GetPartMaterialAssignments`, `CancelPrintJob`, `PrioritizePrintJob`; also exports `ClientInterface` (used for dependency injection in jobs and the web server)
+  - `caching_client.go` — `CachingClient` wraps `ClientInterface`; caches materials/variants for 5 minutes and printers/slots/part-assignments for 1 minute; write and action methods (`UpdatePrinterTags`, `GetPrintJobs`, `CancelPrintJob`, `PrioritizePrintJob`) are always forwarded uncached
 - `internal/jobs/` — cron job implementations
   - `filament_tagger.go` — `FilamentTaggerJob`
+- `internal/web/` — HTTP server and print queue UI
+  - `server.go` — `Server`; registers routes (`/queue`, `/cancel-job`, `/prioritize-job`) and serves on `WEB_PORT`
+  - `handlers.go` — request handlers; fetches jobs/printers/slots/materials concurrently and renders the queue page
+  - `matcher.go` — `RankPrinters`; ranks printers by filament compatibility for a given job's `PartMaterialAssignment` list
+  - `templates/` — embedded HTML templates
 - `docs/printago-api-swagger.json` — Printago OpenAPI 3.1 spec (do not edit manually)
 - Build output goes to `bin/printago-buddy`; the `bin/` directory is gitignored
 - No vendor directory; dependencies are managed via Go modules (`go.mod`)
