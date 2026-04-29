@@ -38,6 +38,12 @@ func (m *mockClient) GetMaterials(_ context.Context) ([]printago.Material, error
 func (m *mockClient) GetMaterialVariants(_ context.Context) ([]printago.MaterialVariant, error) {
 	return m.variants, nil
 }
+func (m *mockClient) GetPrintJobs(_ context.Context) ([]printago.PrintJob, error) {
+	return nil, nil
+}
+func (m *mockClient) GetPartMaterialAssignments(_ context.Context, _ string) ([]printago.PartMaterialAssignment, error) {
+	return nil, nil
+}
 func (m *mockClient) UpdatePrinterTags(_ context.Context, printerID string, tags []string) error {
 	idx := len(m.updateTagsCalls)
 	m.updateTagsCalls = append(m.updateTagsCalls, updateTagsCall{printerID: printerID, tags: tags})

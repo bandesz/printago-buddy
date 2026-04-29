@@ -22,6 +22,8 @@ type ClientInterface interface {
 	GetMaterials(ctx context.Context) ([]Material, error)
 	GetMaterialVariants(ctx context.Context) ([]MaterialVariant, error)
 	UpdatePrinterTags(ctx context.Context, printerID string, tags []string) error
+	GetPrintJobs(ctx context.Context) ([]PrintJob, error)
+	GetPartMaterialAssignments(ctx context.Context, partID string) ([]PartMaterialAssignment, error)
 }
 
 // Client is an HTTP client for the Printago REST API.
@@ -133,4 +135,23 @@ func (c *Client) GetMaterialVariants(ctx context.Context) ([]MaterialVariant, er
 func (c *Client) UpdatePrinterTags(ctx context.Context, printerID string, tags []string) error {
 	body := map[string]any{"tags": tags}
 	return c.do(ctx, http.MethodPatch, "/v1/printers/"+printerID, body, nil)
+}
+
+// GetPartMaterialAssignments returns the material assignments for a part,
+// describing what filament is required in each slot.
+func (c *Client) GetPartMaterialAssignments(ctx context.Context, partID string) ([]PartMaterialAssignment, error) {
+	var assignments []PartMaterialAssignment
+	if err := c.do(ctx, http.MethodGet, "/v1/part-material-assignments?partId="+partID, nil, &assignments); err != nil {
+		return nil, err
+	}
+	return assignments, nil
+}
+
+// GetPrintJobs returns all pending print jobs sorted by queue order.
+func (c *Client) GetPrintJobs(ctx context.Context) ([]PrintJob, error) {
+	var jobs []PrintJob
+	if err := c.do(ctx, http.MethodGet, "/v1/print-jobs?status=pending&limit=200&sort=queueOrder", nil, &jobs); err != nil {
+		return nil, err
+	}
+	return jobs, nil
 }

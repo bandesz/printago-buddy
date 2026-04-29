@@ -1,0 +1,78 @@
+{{define "content"}}
+<style>
+    h1 { font-size: 22px; font-weight: 700; margin-bottom: 20px; }
+    .error {
+        background: #fef2f2; border: 1px solid #fecaca; color: #991b1b;
+        padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; font-size: 14px;
+    }
+    .empty { color: #64748b; font-size: 14px; }
+    table {
+        width: 100%; border-collapse: collapse; background: #fff;
+        border-radius: 10px; overflow: hidden;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+    thead th {
+        background: #f8fafc; font-size: 11px; font-weight: 700;
+        text-transform: uppercase; letter-spacing: 0.07em; color: #64748b;
+        padding: 12px 16px; text-align: left; border-bottom: 1px solid #e2e8f0;
+    }
+    tbody td { padding: 14px 16px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:hover td { background: #f8fafc; }
+    .col-order { width: 56px; color: #94a3b8; font-size: 13px; text-align: center; }
+    .job-name { font-weight: 600; font-size: 14px; }
+    .job-label { color: #64748b; font-size: 12px; margin-top: 3px; }
+    .printer-list { display: flex; flex-direction: column; gap: 5px; }
+    .printer-entry { display: flex; align-items: center; gap: 7px; font-size: 13px; }
+    .icon-full    { color: #16a34a; font-weight: 700; font-size: 15px; line-height: 1; }
+    .icon-partial { color: #ea580c; font-weight: 700; font-size: 15px; line-height: 1; }
+    .no-match { color: #94a3b8; font-size: 13px; font-style: italic; }
+</style>
+
+<h1>Print Queue</h1>
+
+{{if .Err}}<div class="error">{{.Err}}</div>{{end}}
+
+{{if .Entries}}
+<table>
+    <thead>
+        <tr>
+            <th class="col-order">#</th>
+            <th>Job</th>
+            <th>Best Matching Printers</th>
+        </tr>
+    </thead>
+    <tbody>
+        {{range .Entries}}
+        <tr>
+            <td class="col-order">{{.Index}}</td>
+            <td>
+                <div class="job-name">{{.Job.PartName}}</div>
+                <div class="job-label">{{.Job.Label}}</div>
+            </td>
+            <td>
+                <div class="printer-list">
+                    {{if .Printers}}
+                        {{range .Printers}}
+                        <div class="printer-entry">
+                            {{if .IsFull}}
+                            <span class="icon-full">✓</span>
+                            {{else}}
+                            <span class="icon-partial">✓</span>
+                            {{end}}
+                            <span>{{.Printer.Name}}</span>
+                        </div>
+                        {{end}}
+                    {{else}}
+                    <span class="no-match">No matching printers</span>
+                    {{end}}
+                </div>
+            </td>
+        </tr>
+        {{end}}
+    </tbody>
+</table>
+{{else}}{{if not .Err}}
+<p class="empty">No pending print jobs.</p>
+{{end}}{{end}}
+{{end}}

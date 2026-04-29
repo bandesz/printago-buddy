@@ -12,6 +12,7 @@ import (
 	"github.com/bandesz/printago-buddy/internal/config"
 	"github.com/bandesz/printago-buddy/internal/jobs"
 	"github.com/bandesz/printago-buddy/internal/printago"
+	"github.com/bandesz/printago-buddy/internal/web"
 )
 
 func main() {
@@ -31,8 +32,20 @@ func main() {
 		slog.Error("failed to register cron job", "error", err)
 		os.Exit(1)
 	}
-
 	c.Start()
+
+	webSrv, err := web.NewServer(client, cfg.WebPort)
+	if err != nil {
+		slog.Error("failed to create web server", "error", err)
+		os.Exit(1)
+	}
+	go func() {
+		if err := webSrv.Start(); err != nil {
+			slog.Error("web server error", "error", err)
+			os.Exit(1)
+		}
+	}()
+
 	slog.Info("printago-buddy started")
 
 	quit := make(chan os.Signal, 1)
