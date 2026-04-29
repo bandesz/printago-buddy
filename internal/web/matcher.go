@@ -165,14 +165,13 @@ func buildMatchedFilament(
 			}
 			if m, ok := materialsByID[v.MaterialID]; ok {
 				brand = m.Brand
-				matType = m.Type
+				matType = m.Name
 			}
 		}
 	} else if a.MaterialID != "" {
 		if m, ok := materialsByID[a.MaterialID]; ok {
 			brand = m.Brand
-			matType = m.Type
-			name = m.Name
+			matType = m.Name
 		}
 	}
 
