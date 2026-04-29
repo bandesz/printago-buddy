@@ -19,6 +19,13 @@
     tbody td { padding: 14px 16px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
     tbody tr:last-child td { border-bottom: none; }
     tbody tr:hover td { background: #f8fafc; }
+    .section-divider td {
+        background: #f1f5f9; font-size: 11px; font-weight: 700;
+        text-transform: uppercase; letter-spacing: 0.07em; color: #64748b;
+        padding: 8px 16px; border-top: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0;
+        text-align: center;
+    }
+    .section-divider:hover td { background: #f1f5f9; }
     .col-order { width: 56px; color: #94a3b8; font-size: 13px; text-align: center; }
     .job-name { font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
     .job-label { color: #64748b; font-size: 12px; margin-top: 3px; }
@@ -57,7 +64,7 @@
 
 {{if .Err}}<div class="error">{{.Err}}</div>{{end}}
 
-{{if .Entries}}
+{{if or .NormalEntries .LowEntries}}
 <table>
     <thead>
         <tr>
@@ -67,7 +74,7 @@
         </tr>
     </thead>
     <tbody>
-        {{range .Entries}}
+        {{range .NormalEntries}}
         <tr>
             <td class="col-order">{{.Index}}</td>
             <td>
@@ -101,6 +108,46 @@
                 </div>
             </td>
         </tr>
+        {{end}}
+        {{if .LowEntries}}
+        <tr class="section-divider">
+            <td colspan="3">Low priority</td>
+        </tr>
+        {{range .LowEntries}}
+        <tr>
+            <td class="col-order">{{.Index}}</td>
+            <td>
+                <div class="job-name">
+                    <span>{{.Job.PartName}}</span>
+                    {{range .JobFilaments}}
+                    <span class="filament-chip" style="background: {{.ColorCSS}};" data-tooltip="{{.Tooltip}}"></span>
+                    {{end}}
+                </div>
+                <div class="job-label">{{.Job.Label}}</div>
+            </td>
+            <td>
+                <div class="printer-list">
+                    {{if .Printers}}
+                        {{range .Printers}}
+                        <div class="printer-entry">
+                            {{if .IsFull}}
+                            <span class="icon-full">✓</span>
+                            {{else}}
+                            <span class="icon-partial">✓</span>
+                            {{end}}
+                            <span>{{.Printer.Name}}</span>
+                            {{range .MatchedFilaments}}
+                            <span class="filament-chip" style="background: {{.ColorCSS}};" data-tooltip="{{.Tooltip}}"></span>
+                            {{end}}
+                        </div>
+                        {{end}}
+                    {{else}}
+                    <span class="no-match">No matching printers</span>
+                    {{end}}
+                </div>
+            </td>
+        </tr>
+        {{end}}
         {{end}}
     </tbody>
 </table>

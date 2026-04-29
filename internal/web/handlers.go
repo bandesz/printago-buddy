@@ -18,9 +18,10 @@ type queueEntry struct {
 }
 
 type queuePageData struct {
-	Page    string
-	Entries []queueEntry
-	Err     string
+	Page          string
+	NormalEntries []queueEntry
+	LowEntries    []queueEntry
+	Err           string
 }
 
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
@@ -89,7 +90,8 @@ func (s *Server) handleQueue(w http.ResponseWriter, r *http.Request) {
 	// Fetch part material assignments for all jobs concurrently.
 	assignmentsMap := fetchAllPartAssignments(ctx, s.client, jobs)
 
-	entries := make([]queueEntry, 0, len(jobs))
+	normalEntries := make([]queueEntry, 0, len(jobs))
+	lowEntries := make([]queueEntry, 0)
 	for i, job := range jobs {
 		jobAssignments := assignmentsMap[job.ID]
 		jobFilaments := make([]MatchedFilament, 0, len(jobAssignments))
@@ -98,14 +100,20 @@ func (s *Server) handleQueue(w http.ResponseWriter, r *http.Request) {
 				jobFilaments = append(jobFilaments, buildMatchedFilament(a, variantsByID, materialsByID))
 			}
 		}
-		entries = append(entries, queueEntry{
+		entry := queueEntry{
 			Index:        i + 1,
 			Job:          job,
 			JobFilaments: jobFilaments,
 			Printers:     RankPrinters(jobAssignments, printers, slotsByPrinter, variantsByID, materialsByID),
-		})
+		}
+		if job.Priority == 1000 {
+			lowEntries = append(lowEntries, entry)
+		} else {
+			normalEntries = append(normalEntries, entry)
+		}
 	}
-	data.Entries = entries
+	data.NormalEntries = normalEntries
+	data.LowEntries = lowEntries
 	s.render(w, s.queueTmpl, data)
 }
 
