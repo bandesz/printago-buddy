@@ -22,7 +22,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	client := printago.NewClient(cfg.APIKey, cfg.StoreID)
+	client := printago.NewCachingClient(printago.NewClient(cfg.APIKey, cfg.StoreID))
 	tagger := jobs.NewFilamentTaggerJob(client)
 
 	c := cron.New()
