@@ -4,3 +4,42 @@ golangci-lint = "2.15.0"
 
 [env]
 _.file = ".env"
+
+[tasks.dev]
+description = "Run the server locally"
+run = "go run ./cmd/printago-buddy"
+
+[tasks.build]
+description = "Build bin/printago-buddy"
+run = "go build -o bin/printago-buddy ./cmd/printago-buddy"
+
+[tasks.test]
+description = "Run tests"
+run = "go test ./..."
+
+[tasks.lint]
+description = "Run golangci-lint"
+run = "golangci-lint run ./..."
+
+[tasks.release]
+description = "Tag, build, and push a Docker image to Docker Hub"
+usage = '''
+arg "<version>" help="Semver, for example 1.2.3"
+'''
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+version="${usage_version:?}"
+image="bandesz/printago-buddy"
+echo "==> Tagging v${version}"
+git tag -a "v${version}" -m "Release v${version}"
+git push origin "v${version}"
+echo "==> Building and pushing ${image}:${version} for linux/amd64 and linux/arm64"
+docker buildx build \
+	--platform linux/amd64,linux/arm64 \
+	-t "${image}:${version}" \
+	-t "${image}:latest" \
+	--push \
+	.
+echo "==> Released v${version}"
+"""

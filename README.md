@@ -96,26 +96,19 @@ The key is passed via the `PRINTAGO_API_KEY` environment variable (see [Configur
 
 ## Development
 
-**Prerequisites:** Go 1.27+, [`golangci-lint`](https://golangci-lint.run/) (for linting)
+**Prerequisites:** [mise](https://mise.jdx.dev/). It installs Go and golangci-lint, and loads `.env`.
 
 ```sh
-# Build
-make build          # output: bin/printago-buddy
-
-# Run locally (requires env vars set in your shell)
-go run ./cmd/printago-buddy
-
-# Test
-make test
-
-# Lint
-make lint
+mise dev     # run the server locally
+mise build   # output: bin/printago-buddy
+mise test
+mise lint
 ```
 
 ## Releasing
 
 ```sh
-make release VERSION=1.2.3
+mise release 1.2.3
 ```
 
 This will:
