@@ -1,3 +1,17 @@
+{{define "materials"}}
+<div class="material-list">
+    {{range .}}
+    <div class="material-line">
+        {{range $i, $color := .Colors}}
+        {{if $i}}<span class="material-or">or</span>{{end}}
+        <span class="filament-chip" style="background: {{$color.ColorCSS}};" data-tooltip="{{$color.Tooltip}}"></span>
+        <span class="material-name">{{$color.ColorName}}</span>
+        {{end}}
+    </div>
+    {{end}}
+</div>
+{{end}}
+
 {{define "content"}}
 <style>
     h1 { font-size: 22px; font-weight: 700; margin-bottom: 20px; }
@@ -35,6 +49,10 @@
         background: #e2e8f0; border-radius: 999px; padding: 1px 7px;
     }
     .job-label { color: #64748b; font-size: 12px; margin-top: 3px; }
+    .material-list { display: flex; flex-direction: column; gap: 6px; }
+    .material-line { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13px; }
+    .material-name { color: #334155; }
+    .material-or { color: #94a3b8; font-size: 12px; }
     .printer-list { display: flex; flex-direction: column; gap: 5px; }
     .printer-entry { display: flex; align-items: center; gap: 7px; font-size: 13px; }
     .icon-full    { color: #16a34a; font-weight: 700; font-size: 15px; line-height: 1; }
@@ -90,6 +108,7 @@
     <thead>
         <tr>
             <th>Job</th>
+            <th>Materials</th>
             <th>Best Matching Printers</th>
             <th class="col-actions"></th>
         </tr>
@@ -108,14 +127,12 @@
                         <div class="job-name">
                             <span>{{.Job.PartName}}</span>
                             {{if gt .Count 1}}<span class="job-count">x{{.Count}}</span>{{end}}
-                            {{range .JobFilaments}}
-                            <span class="filament-chip" style="background: {{.ColorCSS}};" data-tooltip="{{.Tooltip}}"></span>
-                            {{end}}
                         </div>
                         <div class="job-label">{{.Job.Label}}</div>
                     </div>
                 </div>
             </td>
+            <td>{{template "materials" .JobMaterials}}</td>
             <td>
                 <div class="printer-list">
                     {{if .Printers}}
@@ -151,7 +168,7 @@
         {{end}}
         {{if .LowEntries}}
         <tr class="section-divider">
-            <td colspan="3">Low priority</td>
+            <td colspan="4">Low priority</td>
         </tr>
         {{range .LowEntries}}
         <tr>
@@ -166,14 +183,12 @@
                         <div class="job-name">
                             <span>{{.Job.PartName}}</span>
                             {{if gt .Count 1}}<span class="job-count">x{{.Count}}</span>{{end}}
-                            {{range .JobFilaments}}
-                            <span class="filament-chip" style="background: {{.ColorCSS}};" data-tooltip="{{.Tooltip}}"></span>
-                            {{end}}
                         </div>
                         <div class="job-label">{{.Job.Label}}</div>
                     </div>
                 </div>
             </td>
+            <td>{{template "materials" .JobMaterials}}</td>
             <td>
                 <div class="printer-list">
                     {{if .Printers}}

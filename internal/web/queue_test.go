@@ -11,11 +11,11 @@ func TestGroupQueueEntries_collapsesSameJob(t *testing.T) {
 	red := filament("Red", "#ff0000")
 	blue := filament("Blue", "#0000ff")
 	entries := []queueEntry{
-		{Job: job("job-a", "Trains", "Trains - Plate 1"), JobFilaments: []MatchedFilament{red}},
-		{Job: job("job-b", "Hexagon", "Hexagon bottom"), JobFilaments: []MatchedFilament{blue}},
-		{Job: job("job-c", "Trains", "Trains - Plate 1"), JobFilaments: []MatchedFilament{red}},
-		{Job: job("job-d", "Trains", "Trains - Plate 1"), JobFilaments: []MatchedFilament{blue}},
-		{Job: job("job-e", "Trains", "Other label"), JobFilaments: []MatchedFilament{red}},
+		{Job: job("job-a", "Trains", "Trains - Plate 1"), JobMaterials: []JobMaterial{{Colors: []MatchedFilament{red}}}},
+		{Job: job("job-b", "Hexagon", "Hexagon bottom"), JobMaterials: []JobMaterial{{Colors: []MatchedFilament{blue}}}},
+		{Job: job("job-c", "Trains", "Trains - Plate 1"), JobMaterials: []JobMaterial{{Colors: []MatchedFilament{red}}}},
+		{Job: job("job-d", "Trains", "Trains - Plate 1"), JobMaterials: []JobMaterial{{Colors: []MatchedFilament{blue}}}},
+		{Job: job("job-e", "Trains", "Other label"), JobMaterials: []JobMaterial{{Colors: []MatchedFilament{red}}}},
 	}
 
 	got := groupQueueEntries(entries)
@@ -41,10 +41,12 @@ func TestQueueTemplate_showsCountOnGroupedRow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	red := filament("Red", "#ff0000")
+	blue := filament("Blue", "#0000ff")
 	data := queuePageData{
 		Page: "queue",
 		NormalEntries: []queueEntry{
-			{Count: 2, Job: job("job-a", "Trains", "Trains - Plate 1")},
+			{Count: 2, Job: job("job-a", "Trains", "Trains - Plate 1"), JobMaterials: []JobMaterial{{Colors: []MatchedFilament{red, blue}}}},
 			{Count: 1, Job: job("job-b", "Hexagon", "Hexagon bottom")},
 		},
 	}
@@ -65,6 +67,27 @@ func TestQueueTemplate_showsCountOnGroupedRow(t *testing.T) {
 	if strings.Contains(html, "col-order") || strings.Contains(html, ">#<") {
 		t.Fatal("queue position column should not be rendered")
 	}
+	line := materialLine(html)
+	if !strings.Contains(line, "Red") || !strings.Contains(line, "Blue") || !strings.Contains(line, "or") {
+		t.Fatalf("alternative colors should share one materials line, got %q", line)
+	}
+	name := html[strings.Index(html, `class="job-name"`):strings.Index(html, `class="job-label"`)]
+	if strings.Contains(name, "filament-chip") || strings.Contains(name, "Red") {
+		t.Fatalf("job name should not list materials, got %q", name)
+	}
+}
+
+func materialLine(html string) string {
+	start := strings.Index(html, `class="material-line"`)
+	if start < 0 {
+		return ""
+	}
+	rest := html[start:]
+	end := strings.Index(rest, "</div>")
+	if end < 0 {
+		return rest
+	}
+	return rest[:end]
 }
 
 func job(id, name, label string) printago.PrintJob {

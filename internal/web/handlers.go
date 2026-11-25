@@ -16,7 +16,7 @@ import (
 type queueEntry struct {
 	Count        int
 	Job          printago.PrintJob
-	JobFilaments []MatchedFilament
+	JobMaterials []JobMaterial
 	Printers     []PrinterCandidate
 }
 
@@ -102,7 +102,7 @@ func (s *Server) handleQueue(w http.ResponseWriter, r *http.Request) {
 		jobAssignments := assignmentsMap[job.ID]
 		entry := queueEntry{
 			Job:          job,
-			JobFilaments: JobFilaments(job, jobAssignments, variantsByID, materialsByID),
+			JobMaterials: JobFilaments(job, jobAssignments, variantsByID, materialsByID),
 			Printers:     RankJobPrinters(job, jobAssignments, printers, slotsByPrinter, variantsByID, materialsByID),
 		}
 		if job.Priority == 1000 {
@@ -139,13 +139,15 @@ func jobIdentity(entry queueEntry) string {
 	b.WriteString(entry.Job.PartName)
 	b.WriteByte(0)
 	b.WriteString(entry.Job.Label)
-	for _, filament := range entry.JobFilaments {
-		b.WriteByte(0)
-		b.WriteString(filament.Name)
-		b.WriteByte(0)
-		b.WriteString(filament.Type)
-		b.WriteByte(0)
-		b.WriteString(string(filament.ColorCSS))
+	for _, material := range entry.JobMaterials {
+		for _, color := range material.Colors {
+			b.WriteByte(0)
+			b.WriteString(color.Name)
+			b.WriteByte(0)
+			b.WriteString(color.Type)
+			b.WriteByte(0)
+			b.WriteString(string(color.ColorCSS))
+		}
 	}
 	return b.String()
 }

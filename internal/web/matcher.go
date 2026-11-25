@@ -157,25 +157,93 @@ func RankJobPrinters(
 	return candidates
 }
 
-// JobFilaments returns the filament swatches to show for a queued job.
+// JobMaterial is one filament channel. Colors are the acceptable options for
+// that channel, preferred first, and they render on a single line.
+type JobMaterial struct {
+	Colors []MatchedFilament
+}
+
+// ColorName is the label shown next to a swatch.
+func (f MatchedFilament) ColorName() string {
+	if f.Name != "" {
+		return f.Name
+	}
+	return f.Type
+}
+
+// JobFilaments returns one line per filament channel for a queued job.
 // Assignments resolved from a SKU variant replace the part default on the
-// same channel. Other channels keep the part default.
+// same channel. Other channels keep the part default. Every acceptable color
+// for a channel stays on that channel's line.
 func JobFilaments(
 	job printago.PrintJob,
 	partAssignments []printago.PartMaterialAssignment,
 	variantsByID map[string]printago.MaterialVariant,
 	materialsByID map[string]printago.Material,
-) []MatchedFilament {
-	slots := requirementSlots(job, partAssignments)
-	out := make([]MatchedFilament, 0, len(slots))
-	for _, slot := range slots {
-		a := slot.assignment
-		if a.VariantID == "" && a.MaterialID == "" && a.MaterialType == "" {
+) []JobMaterial {
+	overrides := effectiveMaterialAssignments(job)
+	overridden := make(map[int]struct{}, len(overrides))
+	lines := make([]JobMaterial, 0, len(overrides)+len(partAssignments))
+	for _, key := range sortedChannelKeys(overrides) {
+		idx, err := strconv.Atoi(key)
+		if err != nil {
 			continue
 		}
-		out = append(out, buildMatchedFilament(a, variantsByID, materialsByID))
+		colors := colorsFromSpecs(overrides[key], variantsByID, materialsByID)
+		if len(colors) == 0 {
+			continue
+		}
+		overridden[idx] = struct{}{}
+		lines = append(lines, JobMaterial{Colors: colors})
 	}
-	return out
+
+	grouped := make([][]printago.PartMaterialAssignment, 0)
+	indexPos := make(map[int]int)
+	for _, assignment := range partAssignments {
+		if _, skip := overridden[assignment.Index]; skip {
+			continue
+		}
+		if assignment.VariantID == "" && assignment.MaterialID == "" {
+			continue
+		}
+		pos, seen := indexPos[assignment.Index]
+		if !seen {
+			indexPos[assignment.Index] = len(grouped)
+			grouped = append(grouped, nil)
+			pos = len(grouped) - 1
+		}
+		grouped[pos] = append(grouped[pos], assignment)
+	}
+	for _, rows := range grouped {
+		sort.SliceStable(rows, func(i, j int) bool {
+			return rows[i].Priority < rows[j].Priority
+		})
+		colors := make([]MatchedFilament, 0, len(rows))
+		for _, assignment := range rows {
+			colors = append(colors, buildMatchedFilament(assignment, variantsByID, materialsByID))
+		}
+		lines = append(lines, JobMaterial{Colors: colors})
+	}
+	return lines
+}
+
+func colorsFromSpecs(
+	specs []printago.MaterialSpec,
+	variantsByID map[string]printago.MaterialVariant,
+	materialsByID map[string]printago.Material,
+) []MatchedFilament {
+	colors := make([]MatchedFilament, 0, len(specs))
+	for _, spec := range specs {
+		if spec.VariantID == "" && spec.MaterialID == "" && spec.MaterialType == "" {
+			continue
+		}
+		colors = append(colors, buildMatchedFilament(printago.PartMaterialAssignment{
+			VariantID:    spec.VariantID,
+			MaterialID:   spec.MaterialID,
+			MaterialType: spec.MaterialType,
+		}, variantsByID, materialsByID))
+	}
+	return colors
 }
 
 // effectiveMaterialAssignments returns the colors selected for this job.

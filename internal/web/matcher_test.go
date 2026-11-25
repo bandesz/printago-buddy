@@ -212,14 +212,14 @@ func TestJobFilaments_skuVariantReplacesPartColor(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("got %d filaments, want 2", len(got))
 	}
-	if got[0].Name != "Red" {
-		t.Errorf("channel 0 name = %q, want Red", got[0].Name)
+	if got[0].Colors[0].Name != "Red" {
+		t.Errorf("channel 0 name = %q, want Red", got[0].Colors[0].Name)
 	}
-	if string(got[0].ColorCSS) != "#FF0000FF" {
-		t.Errorf("channel 0 color = %q, want #FF0000FF", got[0].ColorCSS)
+	if string(got[0].Colors[0].ColorCSS) != "#FF0000FF" {
+		t.Errorf("channel 0 color = %q, want #FF0000FF", got[0].Colors[0].ColorCSS)
 	}
-	if got[1].Name != "White" {
-		t.Errorf("channel 1 name = %q, want White", got[1].Name)
+	if got[1].Colors[0].Name != "White" {
+		t.Errorf("channel 1 name = %q, want White", got[1].Colors[0].Name)
 	}
 }
 
@@ -240,8 +240,49 @@ func TestJobFilaments_partBuildCarriesSKUVariant(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("got %d filaments, want 1", len(got))
 	}
-	if got[0].Name != "Red" {
-		t.Errorf("name = %q, want Red", got[0].Name)
+	if got[0].Colors[0].Name != "Red" {
+		t.Errorf("name = %q, want Red", got[0].Colors[0].Name)
+	}
+}
+
+func TestJobFilaments_keepsAlternativeColorsOnOneLine(t *testing.T) {
+	variants, materials := skuColorVariants()
+	job := printago.PrintJob{
+		MaterialAssignments: printago.MaterialAssignments{
+			"0": {{VariantID: "sku-red"}, {VariantID: "default-white"}},
+			"1": {{VariantID: "default-white"}},
+		},
+	}
+
+	got := web.JobFilaments(job, nil, variants, materials)
+	if len(got) != 2 {
+		t.Fatalf("got %d lines, want 2", len(got))
+	}
+	if len(got[0].Colors) != 2 || got[0].Colors[0].Name != "Red" || got[0].Colors[1].Name != "White" {
+		t.Fatalf("channel 0 = %+v, want Red and White on one line", got[0].Colors)
+	}
+	if len(got[1].Colors) != 1 || got[1].Colors[0].Name != "White" {
+		t.Fatalf("channel 1 = %+v, want White", got[1].Colors)
+	}
+}
+
+func TestJobFilaments_groupsPartColorsOnTheSameChannel(t *testing.T) {
+	variants, materials := skuColorVariants()
+	part := []printago.PartMaterialAssignment{
+		{Index: 0, Priority: 1, VariantID: "default-white", MaterialID: "mat-pla"},
+		{Index: 0, Priority: 0, VariantID: "sku-red", MaterialID: "mat-pla"},
+		{Index: 1, Priority: 0, VariantID: "default-white", MaterialID: "mat-pla"},
+	}
+
+	got := web.JobFilaments(printago.PrintJob{}, part, variants, materials)
+	if len(got) != 2 {
+		t.Fatalf("got %d lines, want 2", len(got))
+	}
+	if len(got[0].Colors) != 2 || got[0].Colors[0].Name != "Red" || got[0].Colors[1].Name != "White" {
+		t.Fatalf("channel 0 = %+v, want Red then White", got[0].Colors)
+	}
+	if len(got[1].Colors) != 1 || got[1].Colors[0].Name != "White" {
+		t.Fatalf("channel 1 = %+v, want White", got[1].Colors)
 	}
 }
 
