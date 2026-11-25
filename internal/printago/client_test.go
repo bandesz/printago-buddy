@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"reflect"
 	"testing"
 
@@ -213,5 +214,35 @@ func TestUpdatePrinterTags_apiError(t *testing.T) {
 	err := client.UpdatePrinterTags(context.Background(), "p1", []string{"tag"})
 	if err == nil {
 		t.Fatal("expected error on 500 response, got nil")
+	}
+}
+
+// Archived jobs stay status=pending after they are cleared from the Printago
+// queue; the queue view only includes hidden=false.
+func TestGetPrintJobs_excludesArchivedJobs(t *testing.T) {
+	var gotPath string
+	var gotQuery url.Values
+
+	_, client := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Errorf("method = %q, want GET", r.Method)
+		}
+		gotPath = r.URL.Path
+		gotQuery = r.URL.Query()
+		writeJSON(t, w, []printago.PrintJob{})
+	}))
+
+	if _, err := client.GetPrintJobs(context.Background()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if gotPath != "/v1/print-jobs" {
+		t.Errorf("path = %q, want /v1/print-jobs", gotPath)
+	}
+	if gotQuery.Get("status") != "pending" {
+		t.Errorf("status = %q, want pending", gotQuery.Get("status"))
+	}
+	if gotQuery.Get("hidden") != "false" {
+		t.Errorf("hidden = %q, want false", gotQuery.Get("hidden"))
 	}
 }

@@ -149,10 +149,12 @@ func (c *Client) GetPartMaterialAssignments(ctx context.Context, partID string) 
 	return assignments, nil
 }
 
-// GetPrintJobs returns all pending print jobs sorted by queue order.
+// GetPrintJobs returns pending print jobs that are still visible in the
+// Printago queue, sorted by queue order. Cleared jobs stay status=pending
+// and are marked hidden, so hidden jobs are excluded.
 func (c *Client) GetPrintJobs(ctx context.Context) ([]PrintJob, error) {
 	var jobs []PrintJob
-	if err := c.do(ctx, http.MethodGet, "/v1/print-jobs?status=pending&limit=200&sort=queueOrder", nil, &jobs); err != nil {
+	if err := c.do(ctx, http.MethodGet, "/v1/print-jobs?status=pending&hidden=false&limit=200&sort=queueOrder", nil, &jobs); err != nil {
 		return nil, err
 	}
 	return jobs, nil
