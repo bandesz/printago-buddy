@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 
 type queueEntry struct {
 	Index        int
+	Count        int
 	Job          printago.PrintJob
 	JobFilaments []MatchedFilament
 	Printers     []PrinterCandidate
@@ -111,9 +113,43 @@ func (s *Server) handleQueue(w http.ResponseWriter, r *http.Request) {
 			normalEntries = append(normalEntries, entry)
 		}
 	}
-	data.NormalEntries = normalEntries
-	data.LowEntries = lowEntries
+	data.NormalEntries = groupQueueEntries(normalEntries)
+	data.LowEntries = groupQueueEntries(lowEntries)
 	s.render(w, s.queueTmpl, data)
+}
+
+// groupQueueEntries collapses repeated copies of the same job into the row of
+// the earliest copy. Same means the same part, label, and filament colors.
+func groupQueueEntries(entries []queueEntry) []queueEntry {
+	grouped := make([]queueEntry, 0, len(entries))
+	indexByKey := make(map[string]int, len(entries))
+	for _, entry := range entries {
+		key := jobIdentity(entry)
+		if i, ok := indexByKey[key]; ok {
+			grouped[i].Count++
+			continue
+		}
+		entry.Count = 1
+		indexByKey[key] = len(grouped)
+		grouped = append(grouped, entry)
+	}
+	return grouped
+}
+
+func jobIdentity(entry queueEntry) string {
+	var b strings.Builder
+	b.WriteString(entry.Job.PartName)
+	b.WriteByte(0)
+	b.WriteString(entry.Job.Label)
+	for _, filament := range entry.JobFilaments {
+		b.WriteByte(0)
+		b.WriteString(filament.Name)
+		b.WriteByte(0)
+		b.WriteString(filament.Type)
+		b.WriteByte(0)
+		b.WriteString(string(filament.ColorCSS))
+	}
+	return b.String()
 }
 
 // validJobID matches the Printago job ID format: 24 lowercase hex characters.
