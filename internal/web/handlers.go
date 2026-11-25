@@ -14,7 +14,6 @@ import (
 )
 
 type queueEntry struct {
-	Index        int
 	Count        int
 	Job          printago.PrintJob
 	JobFilaments []MatchedFilament
@@ -99,10 +98,9 @@ func (s *Server) handleQueue(w http.ResponseWriter, r *http.Request) {
 
 	normalEntries := make([]queueEntry, 0, len(jobs))
 	lowEntries := make([]queueEntry, 0)
-	for i, job := range jobs {
+	for _, job := range jobs {
 		jobAssignments := assignmentsMap[job.ID]
 		entry := queueEntry{
-			Index:        i + 1,
 			Job:          job,
 			JobFilaments: JobFilaments(job, jobAssignments, variantsByID, materialsByID),
 			Printers:     RankJobPrinters(job, jobAssignments, printers, slotsByPrinter, variantsByID, materialsByID),

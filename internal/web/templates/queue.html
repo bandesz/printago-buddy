@@ -26,7 +26,6 @@
         text-align: center;
     }
     .section-divider:hover td { background: #f1f5f9; }
-    .col-order { width: 56px; color: #94a3b8; font-size: 13px; text-align: center; }
     .job-cell { display: flex; align-items: flex-start; gap: 10px; }
     .job-thumbnail { width: 84px; height: 84px; object-fit: contain; border-radius: 6px; border: 1px solid #e2e8f0; background: #f8fafc; flex-shrink: 0; }
     .job-thumbnail-placeholder { width: 84px; height: 84px; flex-shrink: 0; }
@@ -90,7 +89,6 @@
 <table>
     <thead>
         <tr>
-            <th class="col-order">#</th>
             <th>Job</th>
             <th>Best Matching Printers</th>
             <th class="col-actions"></th>
@@ -99,7 +97,6 @@
     <tbody>
         {{range .NormalEntries}}
         <tr>
-            <td class="col-order">{{.Index}}</td>
             <td>
                 <div class="job-cell">
                     {{if .Job.PreviewURI}}
@@ -154,11 +151,10 @@
         {{end}}
         {{if .LowEntries}}
         <tr class="section-divider">
-            <td colspan="4">Low priority</td>
+            <td colspan="3">Low priority</td>
         </tr>
         {{range .LowEntries}}
         <tr>
-            <td class="col-order">{{.Index}}</td>
             <td>
                 <div class="job-cell">
                     {{if .Job.PreviewURI}}
