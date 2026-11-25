@@ -273,3 +273,30 @@ func TestPrintJob_decodesSKUMaterialAssignments(t *testing.T) {
 		t.Errorf("part build variant = %q", got)
 	}
 }
+
+func TestPrintJob_PreviewURI_prefersBuildThumbnail(t *testing.T) {
+	raw := []byte(`{
+		"thumbnailUri": "https://cdn.example/part.png",
+		"buildThumbnailUri": "https://cdn.example/build.png",
+		"coloredThumbnailUri": "https://cdn.example/colored.png"
+	}`)
+	var job printago.PrintJob
+	if err := json.Unmarshal(raw, &job); err != nil {
+		t.Fatal(err)
+	}
+	if got := job.PreviewURI(); got != "https://cdn.example/build.png" {
+		t.Errorf("preview = %q, want buildThumbnailUri", got)
+	}
+}
+
+func TestPrintJob_PreviewURI_fallsBackToPartThumbnail(t *testing.T) {
+	part := "https://cdn.example/part.png"
+	empty := ""
+	job := printago.PrintJob{ThumbnailURI: &part, BuildThumbnailURI: &empty}
+	if got := job.PreviewURI(); got != part {
+		t.Errorf("preview = %q, want the part thumbnail", got)
+	}
+	if got := (printago.PrintJob{}).PreviewURI(); got != "" {
+		t.Errorf("preview = %q, want empty", got)
+	}
+}

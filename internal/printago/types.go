@@ -46,11 +46,30 @@ type PrintJob struct {
 	Status              string              `json:"status"`
 	QueueOrder          int                 `json:"queueOrder"`
 	ThumbnailURI        *string             `json:"thumbnailUri"`
+	BuildThumbnailURI   *string             `json:"buildThumbnailUri"`
 	RequiredPrinterTags PrintJobTags        `json:"requiredPrinterTags"`
 	Priority            int                 `json:"priority"`
 	CreatedAt           string              `json:"createdAt"`
 	MaterialAssignments MaterialAssignments `json:"materialAssignments"`
 	PartBuild           *PartBuild          `json:"partBuild"`
+}
+
+// PreviewURI returns the image to show for this job. buildThumbnailUri is the
+// preview Printago renders after the SKU variant colors are applied.
+// thumbnailUri stays the part's original image, and coloredThumbnailUri is
+// empty until a printer is assigned.
+func (j PrintJob) PreviewURI() string {
+	if uri := uriString(j.BuildThumbnailURI); uri != "" {
+		return uri
+	}
+	return uriString(j.ThumbnailURI)
+}
+
+func uriString(uri *string) string {
+	if uri == nil {
+		return ""
+	}
+	return *uri
 }
 
 // PartBuild is the build a print job was created from. SKU variant selections
