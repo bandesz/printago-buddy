@@ -20,12 +20,11 @@ release:
 	@echo "==> Tagging v$(VERSION)"
 	git tag -a "v$(VERSION)" -m "Release v$(VERSION)"
 	git push origin "v$(VERSION)"
-	@echo "==> Building Docker image $(DOCKER_IMAGE):$(VERSION)"
-	docker build \
+	@echo "==> Building and pushing $(DOCKER_IMAGE):$(VERSION) for linux/amd64 and linux/arm64"
+	docker buildx build \
+		--platform linux/amd64,linux/arm64 \
 		-t "$(DOCKER_IMAGE):$(VERSION)" \
 		-t "$(DOCKER_IMAGE):latest" \
+		--push \
 		.
-	@echo "==> Pushing Docker images"
-	docker push "$(DOCKER_IMAGE):$(VERSION)"
-	docker push "$(DOCKER_IMAGE):latest"
 	@echo "==> Released v$(VERSION)"
