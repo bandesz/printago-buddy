@@ -39,17 +39,39 @@ type MaterialVariant struct {
 
 // PrintJob represents a print job in the Printago queue.
 type PrintJob struct {
-	ID                  string       `json:"id"`
-	PartID              *string      `json:"partId"`
-	PartName            string       `json:"partName"`
-	Label               string       `json:"label"`
-	Status              string       `json:"status"`
-	QueueOrder          int          `json:"queueOrder"`
-	ThumbnailURI        *string      `json:"thumbnailUri"`
-	RequiredPrinterTags PrintJobTags `json:"requiredPrinterTags"`
-	Priority            int          `json:"priority"`
-	CreatedAt           string       `json:"createdAt"`
+	ID                  string              `json:"id"`
+	PartID              *string             `json:"partId"`
+	PartName            string              `json:"partName"`
+	Label               string              `json:"label"`
+	Status              string              `json:"status"`
+	QueueOrder          int                 `json:"queueOrder"`
+	ThumbnailURI        *string             `json:"thumbnailUri"`
+	RequiredPrinterTags PrintJobTags        `json:"requiredPrinterTags"`
+	Priority            int                 `json:"priority"`
+	CreatedAt           string              `json:"createdAt"`
+	MaterialAssignments MaterialAssignments `json:"materialAssignments"`
+	PartBuild           *PartBuild          `json:"partBuild"`
 }
+
+// PartBuild is the build a print job was created from. SKU variant selections
+// are resolved onto its material assignments.
+type PartBuild struct {
+	ID                  string              `json:"id"`
+	MaterialAssignments MaterialAssignments `json:"materialAssignments"`
+}
+
+// MaterialSpec is one acceptable filament for a channel, in preference order.
+// A SKU variant selection resolves to a spec with VariantID set.
+type MaterialSpec struct {
+	GroupID      string `json:"groupId,omitempty"`
+	VariantID    string `json:"variantId,omitempty"`
+	MaterialID   string `json:"materialId,omitempty"`
+	MaterialType string `json:"materialType,omitempty"`
+}
+
+// MaterialAssignments maps a filament channel index ("0", "1", …) to the
+// acceptable specs for that channel, most preferred first.
+type MaterialAssignments map[string][]MaterialSpec
 
 // PartMaterialAssignment represents a required filament slot for a part.
 type PartMaterialAssignment struct {

@@ -4,6 +4,7 @@ package web
 import (
 	"html/template"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/bandesz/printago-buddy/internal/printago"
@@ -69,17 +70,26 @@ func RankPrinters(
 	variantsByID map[string]printago.MaterialVariant,
 	materialsByID map[string]printago.Material,
 ) []PrinterCandidate {
-	// Build required slot specs from part material assignments.
-	// Each assignment is one required slot; variantId and materialId are both
-	// acceptable identifiers for the same slot.
+	return RankJobPrinters(printago.PrintJob{}, partAssignments, printers, slotsByPrinter, variantsByID, materialsByID)
+}
+
+// RankJobPrinters ranks printers using the job's resolved filament requirements.
+// Assignments resolved from a SKU variant replace the part default on the same
+// channel. Other channels keep the part default.
+func RankJobPrinters(
+	job printago.PrintJob,
+	partAssignments []printago.PartMaterialAssignment,
+	printers []printago.Printer,
+	slotsByPrinter map[string][]printago.PrinterSlot,
+	variantsByID map[string]printago.MaterialVariant,
+	materialsByID map[string]printago.Material,
+) []PrinterCandidate {
 	var required []reqSlot
-	for _, a := range partAssignments {
-		if a.VariantID != "" || a.MaterialID != "" {
-			required = append(required, reqSlot{
-				alts:       []matSpec{{a.VariantID, a.MaterialID}},
-				assignment: a,
-			})
+	for _, slot := range requirementSlots(job, partAssignments) {
+		if len(slot.alts) == 0 {
+			continue
 		}
+		required = append(required, slot)
 	}
 
 	totalRequired := len(required)
@@ -145,6 +155,119 @@ func RankPrinters(
 		candidates = candidates[:3]
 	}
 	return candidates
+}
+
+// JobFilaments returns the filament swatches to show for a queued job.
+// Assignments resolved from a SKU variant replace the part default on the
+// same channel. Other channels keep the part default.
+func JobFilaments(
+	job printago.PrintJob,
+	partAssignments []printago.PartMaterialAssignment,
+	variantsByID map[string]printago.MaterialVariant,
+	materialsByID map[string]printago.Material,
+) []MatchedFilament {
+	slots := requirementSlots(job, partAssignments)
+	out := make([]MatchedFilament, 0, len(slots))
+	for _, slot := range slots {
+		a := slot.assignment
+		if a.VariantID == "" && a.MaterialID == "" && a.MaterialType == "" {
+			continue
+		}
+		out = append(out, buildMatchedFilament(a, variantsByID, materialsByID))
+	}
+	return out
+}
+
+// effectiveMaterialAssignments returns the colors selected for this job.
+// The print job's own assignments win. Otherwise the part build carries the
+// assignments resolved from a SKU variant.
+func effectiveMaterialAssignments(job printago.PrintJob) printago.MaterialAssignments {
+	if len(job.MaterialAssignments) > 0 {
+		return job.MaterialAssignments
+	}
+	if job.PartBuild != nil && len(job.PartBuild.MaterialAssignments) > 0 {
+		return job.PartBuild.MaterialAssignments
+	}
+	return nil
+}
+
+// requirementSlots builds one required slot per filament channel. A channel
+// present in the job's material assignments replaces the part assignment with
+// the same index.
+func requirementSlots(job printago.PrintJob, partAssignments []printago.PartMaterialAssignment) []reqSlot {
+	overrides := effectiveMaterialAssignments(job)
+	overridden := make(map[int]struct{}, len(overrides))
+	slots := make([]reqSlot, 0, len(partAssignments)+len(overrides))
+	for _, key := range sortedChannelKeys(overrides) {
+		idx, err := strconv.Atoi(key)
+		if err != nil {
+			continue
+		}
+		slot, ok := slotFromSpecs(overrides[key])
+		if !ok {
+			continue
+		}
+		overridden[idx] = struct{}{}
+		slots = append(slots, slot)
+	}
+	for _, a := range partAssignments {
+		if _, skip := overridden[a.Index]; skip {
+			continue
+		}
+		if a.VariantID == "" && a.MaterialID == "" {
+			continue
+		}
+		slots = append(slots, reqSlot{
+			alts:       []matSpec{{variantID: a.VariantID, materialID: a.MaterialID}},
+			assignment: a,
+		})
+	}
+	return slots
+}
+
+func slotFromSpecs(specs []printago.MaterialSpec) (reqSlot, bool) {
+	var alts []matSpec
+	var preferred *printago.MaterialSpec
+	for i := range specs {
+		spec := specs[i]
+		if spec.VariantID == "" && spec.MaterialID == "" && spec.MaterialType == "" {
+			continue
+		}
+		if preferred == nil {
+			copied := spec
+			preferred = &copied
+		}
+		if spec.VariantID != "" || spec.MaterialID != "" {
+			alts = append(alts, matSpec{variantID: spec.VariantID, materialID: spec.MaterialID})
+		}
+	}
+	if preferred == nil {
+		return reqSlot{}, false
+	}
+	return reqSlot{
+		alts: alts,
+		assignment: printago.PartMaterialAssignment{
+			VariantID:    preferred.VariantID,
+			MaterialID:   preferred.MaterialID,
+			MaterialType: preferred.MaterialType,
+		},
+	}, true
+}
+
+func sortedChannelKeys(assignments printago.MaterialAssignments) []string {
+	keys := make([]string, 0, len(assignments))
+	for key := range assignments {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		ai, aErr := strconv.Atoi(keys[i])
+		bi, bErr := strconv.Atoi(keys[j])
+		if aErr == nil && bErr == nil {
+			return ai < bi
+		}
+		return keys[i] < keys[j]
+	})
+	return keys
 }
 
 // buildMatchedFilament constructs a MatchedFilament from a part material

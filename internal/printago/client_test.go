@@ -245,4 +245,31 @@ func TestGetPrintJobs_excludesArchivedJobs(t *testing.T) {
 	if gotQuery.Get("hidden") != "false" {
 		t.Errorf("hidden = %q, want false", gotQuery.Get("hidden"))
 	}
+	if gotQuery.Get("include") != "partBuild" {
+		t.Errorf("include = %q, want partBuild", gotQuery.Get("include"))
+	}
+}
+
+func TestPrintJob_decodesSKUMaterialAssignments(t *testing.T) {
+	raw := []byte(`{
+		"id": "aaaaaaaaaaaaaaaaaaaaaaaa",
+		"materialAssignments": {"0": [{"variantId": "bbbbbbbbbbbbbbbbbbbbbbbb"}]},
+		"partBuild": {
+			"id": "cccccccccccccccccccccccc",
+			"materialAssignments": {"1": [{"variantId": "dddddddddddddddddddddddd"}]}
+		}
+	}`)
+	var job printago.PrintJob
+	if err := json.Unmarshal(raw, &job); err != nil {
+		t.Fatal(err)
+	}
+	if got := job.MaterialAssignments["0"][0].VariantID; got != "bbbbbbbbbbbbbbbbbbbbbbbb" {
+		t.Errorf("job variant = %q", got)
+	}
+	if job.PartBuild == nil {
+		t.Fatal("partBuild was not decoded")
+	}
+	if got := job.PartBuild.MaterialAssignments["1"][0].VariantID; got != "dddddddddddddddddddddddd" {
+		t.Errorf("part build variant = %q", got)
+	}
 }

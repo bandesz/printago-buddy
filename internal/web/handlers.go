@@ -99,17 +99,11 @@ func (s *Server) handleQueue(w http.ResponseWriter, r *http.Request) {
 	lowEntries := make([]queueEntry, 0)
 	for i, job := range jobs {
 		jobAssignments := assignmentsMap[job.ID]
-		jobFilaments := make([]MatchedFilament, 0, len(jobAssignments))
-		for _, a := range jobAssignments {
-			if a.VariantID != "" || a.MaterialID != "" {
-				jobFilaments = append(jobFilaments, buildMatchedFilament(a, variantsByID, materialsByID))
-			}
-		}
 		entry := queueEntry{
 			Index:        i + 1,
 			Job:          job,
-			JobFilaments: jobFilaments,
-			Printers:     RankPrinters(jobAssignments, printers, slotsByPrinter, variantsByID, materialsByID),
+			JobFilaments: JobFilaments(job, jobAssignments, variantsByID, materialsByID),
+			Printers:     RankJobPrinters(job, jobAssignments, printers, slotsByPrinter, variantsByID, materialsByID),
 		}
 		if job.Priority == 1000 {
 			lowEntries = append(lowEntries, entry)

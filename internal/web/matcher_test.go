@@ -182,3 +182,93 @@ func TestRankPrinters_materialIDFallbackWhenNoVariant(t *testing.T) {
 		t.Error("expected full match via materialId fallback")
 	}
 }
+
+func skuColorVariants() (map[string]printago.MaterialVariant, map[string]printago.Material) {
+	red := "#FF0000FF"
+	white := "#FFFFFFFF"
+	variants := map[string]printago.MaterialVariant{
+		"sku-red":       {ID: "sku-red", MaterialID: "mat-pla", Name: "Red", Color: &red},
+		"default-white": {ID: "default-white", MaterialID: "mat-pla", Name: "White", Color: &white},
+	}
+	materials := map[string]printago.Material{
+		"mat-pla": {ID: "mat-pla", Name: "PLA Basic", Brand: "Bambu"},
+	}
+	return variants, materials
+}
+
+func TestJobFilaments_skuVariantReplacesPartColor(t *testing.T) {
+	variants, materials := skuColorVariants()
+	part := []printago.PartMaterialAssignment{
+		{Index: 0, VariantID: "default-white", MaterialID: "mat-pla", MaterialType: "PLA"},
+		{Index: 1, VariantID: "default-white", MaterialID: "mat-pla", MaterialType: "PLA"},
+	}
+	job := printago.PrintJob{
+		MaterialAssignments: printago.MaterialAssignments{
+			"0": {{VariantID: "sku-red"}},
+		},
+	}
+
+	got := web.JobFilaments(job, part, variants, materials)
+	if len(got) != 2 {
+		t.Fatalf("got %d filaments, want 2", len(got))
+	}
+	if got[0].Name != "Red" {
+		t.Errorf("channel 0 name = %q, want Red", got[0].Name)
+	}
+	if string(got[0].ColorCSS) != "#FF0000FF" {
+		t.Errorf("channel 0 color = %q, want #FF0000FF", got[0].ColorCSS)
+	}
+	if got[1].Name != "White" {
+		t.Errorf("channel 1 name = %q, want White", got[1].Name)
+	}
+}
+
+func TestJobFilaments_partBuildCarriesSKUVariant(t *testing.T) {
+	variants, materials := skuColorVariants()
+	part := []printago.PartMaterialAssignment{
+		{Index: 0, VariantID: "default-white", MaterialID: "mat-pla"},
+	}
+	job := printago.PrintJob{
+		PartBuild: &printago.PartBuild{
+			MaterialAssignments: printago.MaterialAssignments{
+				"0": {{VariantID: "sku-red"}},
+			},
+		},
+	}
+
+	got := web.JobFilaments(job, part, variants, materials)
+	if len(got) != 1 {
+		t.Fatalf("got %d filaments, want 1", len(got))
+	}
+	if got[0].Name != "Red" {
+		t.Errorf("name = %q, want Red", got[0].Name)
+	}
+}
+
+func TestRankJobPrinters_matchesSKUVariantNotPartDefault(t *testing.T) {
+	variants, materials := skuColorVariants()
+	part := []printago.PartMaterialAssignment{
+		{Index: 0, VariantID: "default-white", MaterialID: "mat-pla"},
+	}
+	job := printago.PrintJob{
+		MaterialAssignments: printago.MaterialAssignments{
+			"0": {{VariantID: "sku-red"}},
+		},
+	}
+	printers := []printago.Printer{printer("p-red", "Red Printer"), printer("p-white", "White Printer")}
+	sbp := slotMap(
+		slotFor("p-red", "sku-red", "mat-pla"),
+		slotFor("p-white", "default-white", "mat-pla"),
+	)
+
+	got := web.RankJobPrinters(job, part, printers, sbp, variants, materials)
+	if len(got) != 1 {
+		t.Fatalf("got %d candidates, want 1", len(got))
+	}
+	if got[0].Printer.ID != "p-red" {
+		t.Errorf("printer = %q, want p-red", got[0].Printer.ID)
+	}
+	if len(got[0].MatchedFilaments) != 1 || got[0].MatchedFilaments[0].Name != "Red" {
+		t.Errorf("matched filaments = %+v, want Red", got[0].MatchedFilaments)
+	}
+}
