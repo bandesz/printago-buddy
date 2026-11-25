@@ -4,7 +4,7 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
 
 ## Project Overview
 
-`printago-buddy` is a Go daemon that runs in a Docker container. The module is `github.com/bandesz/printago-buddy` and requires Go 1.26+.
+`printago-buddy` is a Go daemon that runs in a Docker container. The module is `github.com/bandesz/printago-buddy` and requires Go 1.27+.
 
 It runs cron-like background jobs against the [Printago API](https://developers.printago.io/). The Printago OpenAPI spec is saved at `docs/printago-api-swagger.json`.
 

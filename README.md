@@ -30,7 +30,7 @@ A lightweight web server runs alongside the cron jobs and exposes a read/write q
 ## Requirements
 
 - A [Printago](https://printago.io) account with an API key (see [API key permissions](#api-key-permissions) below)
-- Docker (recommended) **or** Go 1.26+
+- Docker (recommended) **or** Go 1.27+
 
 ## Quick start with Docker Compose
 
@@ -96,7 +96,7 @@ The key is passed via the `PRINTAGO_API_KEY` environment variable (see [Configur
 
 ## Development
 
-**Prerequisites:** Go 1.26+, [`golangci-lint`](https://golangci-lint.run/) (for linting)
+**Prerequisites:** Go 1.27+, [`golangci-lint`](https://golangci-lint.run/) (for linting)
 
 ```sh
 # Build

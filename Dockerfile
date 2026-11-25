@@ -1,5 +1,5 @@
 # ---- build stage --------------------------------------------------------
-FROM golang:1.26-alpine AS builder
+FROM golang:1.27.4-alpine3.24 AS builder
 
 WORKDIR /build
 
@@ -13,7 +13,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -o /printago-buddy ./cmd/printago-buddy
 
 # ---- runtime stage ------------------------------------------------------
-FROM alpine:3
+FROM alpine:3.24
 
 # CA certificates are required for outbound HTTPS calls to api.printago.io.
 RUN apk --no-cache add ca-certificates
