@@ -44,10 +44,6 @@
     .job-thumbnail { width: 84px; height: 84px; object-fit: contain; border-radius: 6px; border: 1px solid #e2e8f0; background: #f8fafc; flex-shrink: 0; }
     .job-thumbnail-placeholder { width: 84px; height: 84px; flex-shrink: 0; }
     .job-name { font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
-    .job-count {
-        color: #475569; font-size: 12px; font-weight: 700;
-        background: #e2e8f0; border-radius: 999px; padding: 1px 7px;
-    }
     .job-label { color: #64748b; font-size: 12px; margin-top: 3px; }
     .material-list { display: flex; flex-direction: column; gap: 6px; }
     .material-line { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13px; }
@@ -110,6 +106,7 @@
             <th>Job</th>
             <th>Materials</th>
             <th>Best Matching Printers</th>
+            <th>Assignment</th>
             <th class="col-actions"></th>
         </tr>
     </thead>
@@ -126,7 +123,6 @@
                     <div>
                         <div class="job-name">
                             <span>{{.Job.PartName}}</span>
-                            {{if gt .Count 1}}<span class="job-count">x{{.Count}}</span>{{end}}
                         </div>
                         <div class="job-label">{{.Job.Label}}</div>
                     </div>
@@ -154,6 +150,7 @@
                     {{end}}
                 </div>
             </td>
+            <td class="assignment">{{.Assignment}}</td>
             <td class="col-actions">
                 <form method="POST" action="/prioritize-job">
                     <input type="hidden" name="id" value="{{.Job.ID}}">
@@ -168,7 +165,7 @@
         {{end}}
         {{if .LowEntries}}
         <tr class="section-divider">
-            <td colspan="4">Low priority</td>
+            <td colspan="5">Low priority</td>
         </tr>
         {{range .LowEntries}}
         <tr>
@@ -182,7 +179,6 @@
                     <div>
                         <div class="job-name">
                             <span>{{.Job.PartName}}</span>
-                            {{if gt .Count 1}}<span class="job-count">x{{.Count}}</span>{{end}}
                         </div>
                         <div class="job-label">{{.Job.Label}}</div>
                     </div>
@@ -210,6 +206,7 @@
                     {{end}}
                 </div>
             </td>
+            <td class="assignment">{{.Assignment}}</td>
             <td class="col-actions">
                 <form method="POST" action="/prioritize-job">
                     <input type="hidden" name="id" value="{{.Job.ID}}">

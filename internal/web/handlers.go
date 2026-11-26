@@ -6,18 +6,18 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/bandesz/printago-buddy/internal/printago"
+	"github.com/bandesz/printago-buddy/internal/smartqueue"
 )
 
 type queueEntry struct {
-	Count        int
 	Job          printago.PrintJob
 	JobMaterials []JobMaterial
 	Printers     []PrinterCandidate
+	Assignment   string
 }
 
 type queuePageData struct {
@@ -95,6 +95,7 @@ func (s *Server) handleQueue(w http.ResponseWriter, r *http.Request) {
 
 	// Fetch part material assignments for all jobs concurrently.
 	assignmentsMap := fetchAllPartAssignments(ctx, s.client, jobs)
+	plan := s.scheduler.Snapshot()
 
 	normalEntries := make([]queueEntry, 0, len(jobs))
 	lowEntries := make([]queueEntry, 0)
@@ -104,6 +105,7 @@ func (s *Server) handleQueue(w http.ResponseWriter, r *http.Request) {
 			Job:          job,
 			JobMaterials: JobFilaments(job, jobAssignments, variantsByID, materialsByID),
 			Printers:     RankJobPrinters(job, jobAssignments, printers, slotsByPrinter, variantsByID, materialsByID),
+			Assignment:   assignmentLabel(plan, job.ID),
 		}
 		if job.Priority == 1000 {
 			lowEntries = append(lowEntries, entry)
@@ -111,45 +113,38 @@ func (s *Server) handleQueue(w http.ResponseWriter, r *http.Request) {
 			normalEntries = append(normalEntries, entry)
 		}
 	}
-	data.NormalEntries = groupQueueEntries(normalEntries)
-	data.LowEntries = groupQueueEntries(lowEntries)
+	data.NormalEntries = normalEntries
+	data.LowEntries = lowEntries
 	s.render(w, s.queueTmpl, data)
 }
 
-// groupQueueEntries collapses repeated copies of the same job into the row of
-// the earliest copy. Same means the same part, label, and filament colors.
-func groupQueueEntries(entries []queueEntry) []queueEntry {
-	grouped := make([]queueEntry, 0, len(entries))
-	indexByKey := make(map[string]int, len(entries))
-	for _, entry := range entries {
-		key := jobIdentity(entry)
-		if i, ok := indexByKey[key]; ok {
-			grouped[i].Count++
-			continue
-		}
-		entry.Count = 1
-		indexByKey[key] = len(grouped)
-		grouped = append(grouped, entry)
+// assignmentLabel is the assignment cell for one visible pending job.
+// A nil plan, or a job the plan does not list, is still being calculated.
+func assignmentLabel(plan *smartqueue.Plan, jobID string) string {
+	if plan == nil {
+		return "Calculating…"
 	}
-	return grouped
-}
-
-func jobIdentity(entry queueEntry) string {
-	var b strings.Builder
-	b.WriteString(entry.Job.PartName)
-	b.WriteByte(0)
-	b.WriteString(entry.Job.Label)
-	for _, material := range entry.JobMaterials {
-		for _, color := range material.Colors {
-			b.WriteByte(0)
-			b.WriteString(color.Name)
-			b.WriteByte(0)
-			b.WriteString(color.Type)
-			b.WriteByte(0)
-			b.WriteString(string(color.ColorCSS))
-		}
+	row, ok := plan.Rows[jobID]
+	if !ok {
+		return "Calculating…"
 	}
-	return b.String()
+	switch row.Status {
+	case smartqueue.StatusAssigned:
+		if row.PrinterName != "" {
+			return row.PrinterName
+		}
+		return row.PrinterID
+	case smartqueue.StatusWaiting:
+		return "Waiting for a printer"
+	case smartqueue.StatusIncompatible:
+		return "No compatible printer"
+	case smartqueue.StatusMerged:
+		return "Part of a merged plate"
+	case smartqueue.StatusUnreadable:
+		return "Unreadable job age"
+	default:
+		return "Calculating…"
+	}
 }
 
 // validJobID matches the Printago job ID format: 24 lowercase hex characters.

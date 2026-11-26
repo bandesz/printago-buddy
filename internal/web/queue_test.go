@@ -7,36 +7,7 @@ import (
 	"github.com/bandesz/printago-buddy/internal/printago"
 )
 
-func TestGroupQueueEntries_collapsesSameJob(t *testing.T) {
-	red := filament("Red", "#ff0000")
-	blue := filament("Blue", "#0000ff")
-	entries := []queueEntry{
-		{Job: job("job-a", "Trains", "Trains - Plate 1"), JobMaterials: []JobMaterial{{Colors: []MatchedFilament{red}}}},
-		{Job: job("job-b", "Hexagon", "Hexagon bottom"), JobMaterials: []JobMaterial{{Colors: []MatchedFilament{blue}}}},
-		{Job: job("job-c", "Trains", "Trains - Plate 1"), JobMaterials: []JobMaterial{{Colors: []MatchedFilament{red}}}},
-		{Job: job("job-d", "Trains", "Trains - Plate 1"), JobMaterials: []JobMaterial{{Colors: []MatchedFilament{blue}}}},
-		{Job: job("job-e", "Trains", "Other label"), JobMaterials: []JobMaterial{{Colors: []MatchedFilament{red}}}},
-	}
-
-	got := groupQueueEntries(entries)
-	if len(got) != 4 {
-		t.Fatalf("rows = %d, want 4", len(got))
-	}
-	if got[0].Count != 2 || got[0].Job.ID != "job-a" {
-		t.Fatalf("first row = id %s count %d, want job-a x2", got[0].Job.ID, got[0].Count)
-	}
-	if got[1].Count != 1 || got[1].Job.ID != "job-b" {
-		t.Fatalf("second row = id %s count %d, want job-b x1", got[1].Job.ID, got[1].Count)
-	}
-	if got[2].Count != 1 || got[2].Job.ID != "job-d" {
-		t.Fatalf("third row = id %s count %d, want the blue Trains job", got[2].Job.ID, got[2].Count)
-	}
-	if got[3].Count != 1 || got[3].Job.ID != "job-e" {
-		t.Fatalf("fourth row = id %s count %d, want the other label", got[3].Job.ID, got[3].Count)
-	}
-}
-
-func TestQueueTemplate_showsCountOnGroupedRow(t *testing.T) {
+func TestQueueTemplate_rendersEachJobRow(t *testing.T) {
 	srv, err := NewServer(nil, nil, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -49,8 +20,16 @@ func TestQueueTemplate_showsCountOnGroupedRow(t *testing.T) {
 	data := queuePageData{
 		Page: "queue",
 		NormalEntries: []queueEntry{
-			{Count: 2, Job: job("job-a", "Trains", "Trains - Plate 1"), JobMaterials: []JobMaterial{{Colors: []MatchedFilament{red, blue}}}},
-			{Count: 1, Job: job("job-b", "Hexagon", "Hexagon bottom")},
+			{
+				Job:          job("job-a", "Trains", "Trains - Plate 1"),
+				JobMaterials: []JobMaterial{{Colors: []MatchedFilament{red, blue}}},
+				Assignment:   "Alpha",
+			},
+			{
+				Job:          job("job-c", "Trains", "Trains - Plate 1"),
+				JobMaterials: []JobMaterial{{Colors: []MatchedFilament{red, blue}}},
+				Assignment:   "Waiting for a printer",
+			},
 		},
 	}
 	var buf strings.Builder
@@ -58,20 +37,20 @@ func TestQueueTemplate_showsCountOnGroupedRow(t *testing.T) {
 		t.Fatal(err)
 	}
 	html := buf.String()
-	if strings.Count(html, "Trains") < 1 || !strings.Contains(html, ">x2<") {
-		t.Fatalf("grouped row missing x2 label:\n%s", html)
+	if strings.Count(html, ">Trains<") != 2 {
+		t.Fatalf("each copy should be its own row:\n%s", html)
 	}
-	if strings.Contains(html, ">x1<") {
-		t.Fatal("single job should not show a count")
+	if strings.Contains(html, "job-count") || strings.Contains(html, ">x2<") || strings.Contains(html, ">x1<") {
+		t.Fatal("xN badge should be absent")
 	}
-	if !strings.Contains(html, `name="id" value="job-a"`) {
-		t.Fatal("actions should target the earliest job in the group")
+	if !strings.Contains(html, `name="id" value="job-a"`) || !strings.Contains(html, `name="id" value="job-c"`) {
+		t.Fatal("each copy should keep its own actions")
+	}
+	if !strings.Contains(html, "<th>Assignment</th>") || !strings.Contains(html, ">Alpha<") || !strings.Contains(html, "Waiting for a printer") {
+		t.Fatalf("assignment column missing:\n%s", html)
 	}
 	if strings.Contains(html, "col-order") || strings.Contains(html, ">#<") {
 		t.Fatal("queue position column should not be rendered")
-	}
-	if strings.Contains(html, "Assignment") {
-		t.Fatal("assignment column should not be rendered")
 	}
 	line := materialLine(html)
 	if !strings.Contains(line, "Red") || !strings.Contains(line, "Blue") || !strings.Contains(line, "or") {
