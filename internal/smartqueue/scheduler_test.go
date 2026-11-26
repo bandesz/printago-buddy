@@ -377,6 +377,169 @@ func TestEnableSnapshotEnabledAfterStateSaveWhenLaterStepsFail(t *testing.T) {
 	})
 }
 
+func TestEnableFailureBeforeReserveIsRetriedWhenSignaturesMatch(t *testing.T) {
+	cases := []struct {
+		name     string
+		prepare  func(*enableAPI)
+		fail     func(*enableAPI)
+		clear    func(*enableAPI)
+		checkErr bool
+	}{
+		{
+			name:  "jobs",
+			fail:  func(api *enableAPI) { api.jobsErr = errors.New("jobs") },
+			clear: func(api *enableAPI) { api.jobsErr = nil },
+		},
+		{
+			name:  "group matching",
+			fail:  func(api *enableAPI) { api.groupErr = errors.New("matching") },
+			clear: func(api *enableAPI) { api.groupErr = nil },
+		},
+		{
+			name:    "troubleshoot",
+			prepare: func(api *enableAPI) { setTagsMatchReady(api, true) },
+			fail:    func(api *enableAPI) { api.troubleErr = errors.New("troubleshoot") },
+			clear:   func(api *enableAPI) { api.troubleErr = nil },
+		},
+		{
+			name:     "reserve",
+			fail:     func(api *enableAPI) { api.tagErr = errors.New("tag patch") },
+			clear:    func(api *enableAPI) { api.tagErr = nil },
+			checkErr: true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			env := newEnableEnv(t)
+			if tc.prepare != nil {
+				tc.prepare(env.api)
+			}
+			if err := env.sched.Poll(context.Background()); err != nil {
+				t.Fatalf("Poll() error = %v", err)
+			}
+			if len(env.api.tagPatches) != 0 || len(env.api.updates) != 0 {
+				t.Fatalf("patches while off: tags %#v settings %#v", env.api.tagPatches, env.api.updates)
+			}
+			before := env.sched.Snapshot()
+
+			tc.fail(env.api)
+			err := env.sched.Enable(context.Background())
+			if err == nil {
+				t.Fatal("Enable() error = nil, want a failure before reserve succeeded")
+			}
+			failed := env.sched.Snapshot()
+			assertEnabled(t, failed)
+			if !maps.Equal(before.Rows, failed.Rows) {
+				t.Fatalf("rows = %#v, want %#v", failed.Rows, before.Rows)
+			}
+			if tc.checkErr && failed.Err != err.Error() {
+				t.Fatalf("Err = %q, want %q", failed.Err, err.Error())
+			}
+			if slices.Contains(env.api.calls, "run-queue") {
+				t.Fatalf("calls = %v, want no queue run before reserve succeeds", env.api.calls)
+			}
+
+			tc.clear(env.api)
+			env.api.resetCalls()
+			if err = env.sched.Poll(context.Background()); err != nil {
+				t.Fatalf("Poll() error = %v", err)
+			}
+			if len(env.api.tagPatches) == 0 {
+				t.Fatal("reservation diff was not retried")
+			}
+			if slices.Contains(env.api.calls, "patch-settings") {
+				t.Fatalf("calls = %v, want no settings patch", env.api.calls)
+			}
+		})
+	}
+}
+
+func TestEnableRunQueueErrorIsRetriedWhenSignaturesMatch(t *testing.T) {
+	env := newEnableEnv(t)
+	if err := env.sched.Poll(context.Background()); err != nil {
+		t.Fatalf("Poll() error = %v", err)
+	}
+	env.api.runErr = errors.New("queue run failed")
+	env.api.resetCalls()
+
+	err := env.sched.Enable(context.Background())
+	if !errors.Is(err, env.api.runErr) {
+		t.Fatalf("Enable() error = %v, want %v", err, env.api.runErr)
+	}
+	snap := env.sched.Snapshot()
+	assertEnabled(t, snap)
+	if snap.Err != err.Error() {
+		t.Fatalf("Err = %q, want %q", snap.Err, err.Error())
+	}
+	assertRow(t, snap, "old", smartqueue.Row{PrinterID: "p1", PrinterName: "Alpha", Status: smartqueue.StatusAssigned})
+	assertRow(t, snap, "young", smartqueue.Row{Status: smartqueue.StatusWaiting})
+	if len(env.api.tagPatches) == 0 {
+		t.Fatal("Enable did not write reservations")
+	}
+
+	env.api.runErr = nil
+	env.api.resetCalls()
+	if err = env.sched.Poll(context.Background()); err != nil {
+		t.Fatalf("Poll() error = %v", err)
+	}
+	if env.api.runCalls != 1 {
+		t.Fatalf("RunQueue calls = %d, want 1", env.api.runCalls)
+	}
+	assertNoJobOrSettingsPatches(t, env.api)
+	if env.sched.Snapshot().Err != "" {
+		t.Fatalf("Err = %q, want empty after the retry", env.sched.Snapshot().Err)
+	}
+}
+
+func TestEnableSuccessLeavesUnchangedPollIdle(t *testing.T) {
+	t.Run("queue run finished", func(t *testing.T) {
+		env := newEnableEnv(t)
+		if err := env.sched.Poll(context.Background()); err != nil {
+			t.Fatalf("Poll() error = %v", err)
+		}
+		if err := env.sched.Enable(context.Background()); err != nil {
+			t.Fatalf("Enable() error = %v", err)
+		}
+		if env.api.runCalls != 1 {
+			t.Fatalf("RunQueue calls = %d, want 1", env.api.runCalls)
+		}
+
+		env.api.printers[0].Name = "Beta"
+		env.api.resetCalls()
+		if err := env.sched.Poll(context.Background()); err != nil {
+			t.Fatalf("Poll() error = %v", err)
+		}
+		assertNoPrintagoWrites(t, env.api)
+		assertRow(t, env.sched.Snapshot(), "old", smartqueue.Row{
+			PrinterID: "p1", PrinterName: "Alpha", Status: smartqueue.StatusAssigned,
+		})
+	})
+
+	t.Run("no assigned printer is ready", func(t *testing.T) {
+		env := newEnableEnv(t)
+		env.api.setSingleJob("job-1", true, "ready")
+		if err := env.sched.Poll(context.Background()); err != nil {
+			t.Fatalf("Poll() error = %v", err)
+		}
+		if err := env.sched.Enable(context.Background()); err != nil {
+			t.Fatalf("Enable() error = %v", err)
+		}
+		if env.api.runCalls != 0 {
+			t.Fatalf("RunQueue calls = %d, want 0", env.api.runCalls)
+		}
+
+		env.api.printers[0].Name = "Beta"
+		env.api.resetCalls()
+		if err := env.sched.Poll(context.Background()); err != nil {
+			t.Fatalf("Poll() error = %v", err)
+		}
+		assertNoPrintagoWrites(t, env.api)
+		assertRow(t, env.sched.Snapshot(), "job-1", smartqueue.Row{
+			PrinterID: "p1", PrinterName: "Alpha", Status: smartqueue.StatusAssigned,
+		})
+	})
+}
+
 func TestEnableTroubleshootsRepresentativeTagsMatch(t *testing.T) {
 	env := newEnableEnv(t)
 	env.api.setSingleJob("job-1", false, "tags-match")

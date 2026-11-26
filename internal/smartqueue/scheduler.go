@@ -78,18 +78,22 @@ func (s *Scheduler) Enable(ctx context.Context) error {
 
 	jobs, err := s.client.GetPrintJobs(ctx)
 	if err != nil {
+		s.markApplyPending(nil)
 		return err
 	}
 	printers, err := s.client.GetPrinters(ctx)
 	if err != nil {
+		s.markApplyPending(nil)
 		return err
 	}
 	matchingResult, err := s.client.GroupMatching(ctx, jobIDs(jobs))
 	if err != nil {
+		s.markApplyPending(nil)
 		return err
 	}
 	groups, err := s.planGroups(ctx, matchingResult)
 	if err != nil {
+		s.markApplyPending(nil)
 		return err
 	}
 
@@ -102,16 +106,15 @@ func (s *Scheduler) Enable(ctx context.Context) error {
 		Prioritized:  idSet(state.PrioritizedJobIDs),
 	})
 	plan.Enabled = true
-	if err = Reserve(plan, reserveJobs(jobs), func(id string, tags map[string]string) error {
-		return s.client.UpdatePrintJobTags(ctx, id, tags)
-	}); err != nil {
-		return err
+	if err = s.reserve(ctx, plan, jobs); err != nil {
+		copied := plan
+		s.markApplyPending(&copied)
+		return s.failPublish(err)
 	}
+	s.applyPending = false
+	s.pendingPlan = nil
 	s.cache.Publish(plan)
-	if !assignedPrinterReady(plan, groups) {
-		return nil
-	}
-	if err = s.client.RunQueue(ctx); err != nil {
+	if err = s.runIfReady(ctx, plan, groups); err != nil {
 		plan.Err = err.Error()
 		s.cache.Publish(plan)
 		return err
@@ -216,7 +219,7 @@ func (s *Scheduler) Poll(ctx context.Context) error {
 		s.settingsPending = false
 	}
 
-	if assignmentChanged {
+	if assignmentChanged || (state.Enabled && s.applyPending && s.pendingPlan == nil) {
 		return s.publishRecomputed(ctx, state, jobs, printers, groups, assignSig, dispatchSig)
 	}
 	if state.Enabled && s.applyPending && s.pendingPlan != nil {
@@ -303,6 +306,11 @@ func (s *Scheduler) retryDispatch(ctx context.Context, groups []PlanGroup, assig
 	s.dispatchPending = false
 	s.clearErr()
 	return nil
+}
+
+func (s *Scheduler) markApplyPending(plan *Plan) {
+	s.applyPending = true
+	s.pendingPlan = plan
 }
 
 func (s *Scheduler) reserve(ctx context.Context, plan Plan, jobs []printago.PrintJob) error {
