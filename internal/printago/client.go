@@ -26,6 +26,7 @@ type ClientInterface interface {
 	GetPartMaterialAssignments(ctx context.Context, partID string) ([]PartMaterialAssignment, error)
 	CancelPrintJob(ctx context.Context, jobID string) error
 	PrioritizePrintJob(ctx context.Context, jobID string) error
+	UpdatePrintJobTags(ctx context.Context, jobID string, tags map[string]string) error
 	GetStoreSettings(ctx context.Context) (StoreSettings, error)
 	UpdateStoreSettings(ctx context.Context, update StoreSettingsUpdate) error
 }
@@ -186,6 +187,14 @@ func (c *Client) CancelPrintJob(ctx context.Context, jobID string) error {
 func (c *Client) PrioritizePrintJob(ctx context.Context, jobID string) error {
 	body := map[string]any{"printJobIds": []string{jobID}}
 	return c.do(ctx, http.MethodPatch, "/v1/print-jobs/move-to-queue-front", body, nil)
+}
+
+// UpdatePrintJobTags patches one print job, sending only requiredPrinterTags.
+func (c *Client) UpdatePrintJobTags(ctx context.Context, jobID string, tags map[string]string) error {
+	body := struct {
+		RequiredPrinterTags map[string]string `json:"requiredPrinterTags"`
+	}{RequiredPrinterTags: tags}
+	return c.do(ctx, http.MethodPatch, "/v1/print-jobs/"+jobID, body, nil)
 }
 
 // GetStoreSettings returns store settings from GET /v1/settings/store.

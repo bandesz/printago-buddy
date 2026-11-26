@@ -1,6 +1,7 @@
 package printago_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -503,5 +504,175 @@ func TestStoreSettingsUpdate(t *testing.T) {
 			}
 			assertJSON(t, body, tc.want)
 		})
+	}
+}
+
+func TestUpdatePrintJobTags(t *testing.T) {
+	cases := []struct {
+		name string
+		tags map[string]string
+		want string
+	}{
+		{
+			name: "sends only requiredPrinterTags",
+			tags: map[string]string{
+				"printer.id":             "printer-a",
+				"user.tags":              "&=pla",
+				"printer.nozzleDiameter": "0.4",
+				"printer.modelName":      "X1C",
+				"filament.type":          "PLA",
+			},
+			want: `{
+				"requiredPrinterTags": {
+					"printer.id": "printer-a",
+					"user.tags": "&=pla",
+					"printer.nozzleDiameter": "0.4",
+					"printer.modelName": "X1C",
+					"filament.type": "PLA"
+				}
+			}`,
+		},
+		{
+			name: "omits absent tag keys",
+			tags: map[string]string{"filament.type": "PETG"},
+			want: `{"requiredPrinterTags":{"filament.type":"PETG"}}`,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var gotMethod, gotPath string
+			var body []byte
+			_, client := newTestServer(t, authHandler(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotMethod = r.Method
+				gotPath = r.URL.Path
+				var err error
+				body, err = io.ReadAll(r.Body)
+				if err != nil {
+					t.Fatal(err)
+				}
+				w.WriteHeader(http.StatusOK)
+			})))
+
+			if err := client.UpdatePrintJobTags(context.Background(), "job123", tc.tags); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if body == nil {
+				t.Fatal("PATCH /v1/print-jobs/{id} was not called")
+			}
+			if gotMethod != http.MethodPatch {
+				t.Errorf("method = %q, want PATCH", gotMethod)
+			}
+			if gotPath != "/v1/print-jobs/job123" {
+				t.Errorf("path = %q, want /v1/print-jobs/job123", gotPath)
+			}
+			assertJSON(t, body, tc.want)
+		})
+	}
+}
+
+func TestUpdatePrintJobTags_decodesParentJobIDAndGroupID(t *testing.T) {
+	parent := "parent-1"
+	group := "group-1"
+	cases := []struct {
+		name       string
+		raw        string
+		wantParent *string
+		wantGroup  *string
+	}{
+		{
+			name:       "both set",
+			raw:        `{"parentJobId":"parent-1","groupId":"group-1"}`,
+			wantParent: &parent,
+			wantGroup:  &group,
+		},
+		{
+			name: "null",
+			raw:  `{"parentJobId":null,"groupId":null}`,
+		},
+		{
+			name: "absent",
+			raw:  `{"id":"job-1"}`,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var job printago.PrintJob
+			if err := json.Unmarshal([]byte(tc.raw), &job); err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			if !reflect.DeepEqual(job.ParentJobID, tc.wantParent) {
+				t.Errorf("parentJobId = %v, want %v", job.ParentJobID, tc.wantParent)
+			}
+			if !reflect.DeepEqual(job.GroupID, tc.wantGroup) {
+				t.Errorf("groupId = %v, want %v", job.GroupID, tc.wantGroup)
+			}
+			encoded, err := json.Marshal(job)
+			if err != nil {
+				t.Fatalf("encode: %v", err)
+			}
+			if bytes.Contains(encoded, []byte(`"ParentJobID"`)) || bytes.Contains(encoded, []byte(`"GroupID"`)) {
+				t.Errorf("encoded = %s, want parentJobId and groupId", encoded)
+			}
+			if tc.wantParent != nil && !bytes.Contains(encoded, []byte(`"parentJobId":"parent-1"`)) {
+				t.Errorf("encoded = %s, want parentJobId", encoded)
+			}
+			if tc.wantGroup != nil && !bytes.Contains(encoded, []byte(`"groupId":"group-1"`)) {
+				t.Errorf("encoded = %s, want groupId", encoded)
+			}
+		})
+	}
+}
+
+func TestUpdatePrintJobTags_decodesEveryStringKey(t *testing.T) {
+	raw := []byte(`{
+		"requiredPrinterTags": {
+			"printer.id": "printer-a",
+			"user.tags": "&=pla",
+			"printer.nozzleDiameter": "0.4",
+			"printer.modelName": "X1C",
+			"filament.type": "PLA",
+			"filament.color": "magenta"
+		}
+	}`)
+	var job printago.PrintJob
+	if err := json.Unmarshal(raw, &job); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	assertPrinterTags(t, job.RequiredPrinterTags, map[string]string{
+		"printer.id":             "printer-a",
+		"user.tags":              "&=pla",
+		"printer.nozzleDiameter": "0.4",
+		"printer.modelName":      "X1C",
+		"filament.type":          "PLA",
+		"filament.color":         "magenta",
+	})
+}
+
+func TestUpdatePrintJobTags_absentTagKeysStayAbsent(t *testing.T) {
+	raw := []byte(`{"requiredPrinterTags":{"printer.id":"printer-a","filament.type":"PLA"}}`)
+	var job printago.PrintJob
+	if err := json.Unmarshal(raw, &job); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	assertPrinterTags(t, job.RequiredPrinterTags, map[string]string{
+		"printer.id":    "printer-a",
+		"filament.type": "PLA",
+	})
+}
+
+func assertPrinterTags(t *testing.T, tags any, want map[string]string) {
+	t.Helper()
+	encoded, err := json.Marshal(tags)
+	if err != nil {
+		t.Fatalf("encode tags: %v", err)
+	}
+	var got map[string]string
+	if err := json.Unmarshal(encoded, &got); err != nil {
+		t.Fatalf("decode tags %s: %v", encoded, err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("tags = %s, want %#v", encoded, want)
 	}
 }

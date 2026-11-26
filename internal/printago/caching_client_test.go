@@ -20,6 +20,7 @@ type stubClient struct {
 	partAssignmentCalls  map[string]int
 	storeSettingsCalls   int
 	storeSettingsUpdates []printago.StoreSettingsUpdate
+	printJobTagUpdates   []printJobTagUpdate
 
 	printers         []printago.Printer
 	printerSlots     []printago.PrinterSlot
@@ -68,6 +69,16 @@ func (s *stubClient) GetStoreSettings(_ context.Context) (printago.StoreSettings
 }
 func (s *stubClient) UpdateStoreSettings(_ context.Context, update printago.StoreSettingsUpdate) error {
 	s.storeSettingsUpdates = append(s.storeSettingsUpdates, update)
+	return nil
+}
+
+type printJobTagUpdate struct {
+	jobID string
+	tags  map[string]string
+}
+
+func (s *stubClient) UpdatePrintJobTags(_ context.Context, jobID string, tags map[string]string) error {
+	s.printJobTagUpdates = append(s.printJobTagUpdates, printJobTagUpdate{jobID: jobID, tags: tags})
 	return nil
 }
 
@@ -369,5 +380,31 @@ func TestStoreSettings_CachingClientForwardsEveryUpdate(t *testing.T) {
 	}
 	if !reflect.DeepEqual(stub.storeSettingsUpdates[0], update) || !reflect.DeepEqual(stub.storeSettingsUpdates[1], update) {
 		t.Errorf("updates = %+v, want both %+v", stub.storeSettingsUpdates, update)
+	}
+}
+
+func TestUpdatePrintJobTags_CachingClientForwardsEveryCall(t *testing.T) {
+	stub := &stubClient{}
+	c := printago.NewCachingClientWithTTL(stub, time.Minute)
+	tags := map[string]string{
+		"printer.id":    "printer-a",
+		"filament.type": "PLA",
+	}
+
+	if err := c.UpdatePrintJobTags(context.Background(), "job-1", tags); err != nil {
+		t.Fatalf("first call: unexpected error: %v", err)
+	}
+	if err := c.UpdatePrintJobTags(context.Background(), "job-2", tags); err != nil {
+		t.Fatalf("second call: unexpected error: %v", err)
+	}
+
+	if len(stub.printJobTagUpdates) != 2 {
+		t.Fatalf("underlying client called %d times, want 2", len(stub.printJobTagUpdates))
+	}
+	if stub.printJobTagUpdates[0].jobID != "job-1" || stub.printJobTagUpdates[1].jobID != "job-2" {
+		t.Errorf("job ids = %q and %q, want job-1 and job-2", stub.printJobTagUpdates[0].jobID, stub.printJobTagUpdates[1].jobID)
+	}
+	if !reflect.DeepEqual(stub.printJobTagUpdates[0].tags, tags) || !reflect.DeepEqual(stub.printJobTagUpdates[1].tags, tags) {
+		t.Errorf("tags = %#v and %#v, want both %#v", stub.printJobTagUpdates[0].tags, stub.printJobTagUpdates[1].tags, tags)
 	}
 }

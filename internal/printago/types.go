@@ -40,6 +40,8 @@ type MaterialVariant struct {
 // PrintJob represents a print job in the Printago queue.
 type PrintJob struct {
 	ID                  string              `json:"id"`
+	ParentJobID         *string             `json:"parentJobId"`
+	GroupID             *string             `json:"groupId"`
 	PartID              *string             `json:"partId"`
 	PartName            string              `json:"partName"`
 	Label               string              `json:"label"`
@@ -47,7 +49,7 @@ type PrintJob struct {
 	QueueOrder          int                 `json:"queueOrder"`
 	ThumbnailURI        *string             `json:"thumbnailUri"`
 	BuildThumbnailURI   *string             `json:"buildThumbnailUri"`
-	RequiredPrinterTags PrintJobTags        `json:"requiredPrinterTags"`
+	RequiredPrinterTags map[string]string   `json:"requiredPrinterTags"`
 	Priority            int                 `json:"priority"`
 	CreatedAt           string              `json:"createdAt"`
 	MaterialAssignments MaterialAssignments `json:"materialAssignments"`
@@ -101,12 +103,6 @@ type PartMaterialAssignment struct {
 	MaterialType string `json:"materialType"`
 	Index        int    `json:"index"`
 	Priority     int    `json:"priority"`
-}
-
-// PrintJobTags holds the tag filter expressions for a print job.
-// UserTags uses Printago's filter syntax, e.g. "&=tag1,tag2".
-type PrintJobTags struct {
-	UserTags string `json:"user.tags"`
 }
 
 // PrintJobMatchingDetails holds per-printer matching information for a job as

@@ -121,6 +121,11 @@ func (c *CachingClient) PrioritizePrintJob(ctx context.Context, jobID string) er
 	return c.inner.PrioritizePrintJob(ctx, jobID)
 }
 
+// UpdatePrintJobTags delegates directly to the inner client (not cached).
+func (c *CachingClient) UpdatePrintJobTags(ctx context.Context, jobID string, tags map[string]string) error {
+	return c.inner.UpdatePrintJobTags(ctx, jobID, tags)
+}
+
 // GetStoreSettings delegates directly to the inner client (not cached).
 func (c *CachingClient) GetStoreSettings(ctx context.Context) (StoreSettings, error) {
 	return c.inner.GetStoreSettings(ctx)
