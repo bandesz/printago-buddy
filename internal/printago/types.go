@@ -156,3 +156,25 @@ type StoreSettingsUpdate struct {
 type PlateMergingUpdate struct {
 	AutomaticMerging *bool `json:"automaticMerging,omitempty"`
 }
+
+// GroupMatchingResult is the POST /v1/print-jobs/queue/group-matching response.
+type GroupMatchingResult struct {
+	Truncated bool         `json:"truncated"`
+	Groups    []MatchGroup `json:"groups"`
+}
+
+// MatchGroup is one queue group and the verdict for each printer.
+type MatchGroup struct {
+	MemberPrintJobIDs        []string              `json:"memberPrintJobIds"`
+	RepresentativePrintJobID string                `json:"representativePrintJobId"`
+	Printers                 []MatchPrinterVerdict `json:"printers"`
+}
+
+// MatchPrinterVerdict is one printer's group-matching verdict.
+// FirstFailedCheck is empty when that printer did not fail a check.
+type MatchPrinterVerdict struct {
+	PrinterID        string `json:"printerId"`
+	Matched          bool   `json:"matched"`
+	Compatible       bool   `json:"compatible"`
+	FirstFailedCheck string `json:"firstFailedCheck"`
+}

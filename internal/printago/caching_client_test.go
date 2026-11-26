@@ -21,6 +21,8 @@ type stubClient struct {
 	storeSettingsCalls   int
 	storeSettingsUpdates []printago.StoreSettingsUpdate
 	printJobTagUpdates   []printJobTagUpdate
+	groupMatchingCalls   [][]string
+	groupMatching        printago.GroupMatchingResult
 
 	printers         []printago.Printer
 	printerSlots     []printago.PrinterSlot
@@ -80,6 +82,11 @@ type printJobTagUpdate struct {
 func (s *stubClient) UpdatePrintJobTags(_ context.Context, jobID string, tags map[string]string) error {
 	s.printJobTagUpdates = append(s.printJobTagUpdates, printJobTagUpdate{jobID: jobID, tags: tags})
 	return nil
+}
+
+func (s *stubClient) GroupMatching(_ context.Context, printJobIDs []string) (printago.GroupMatchingResult, error) {
+	s.groupMatchingCalls = append(s.groupMatchingCalls, printJobIDs)
+	return s.groupMatching, nil
 }
 
 // ---- GetPrinters ----
@@ -380,6 +387,42 @@ func TestStoreSettings_CachingClientForwardsEveryUpdate(t *testing.T) {
 	}
 	if !reflect.DeepEqual(stub.storeSettingsUpdates[0], update) || !reflect.DeepEqual(stub.storeSettingsUpdates[1], update) {
 		t.Errorf("updates = %+v, want both %+v", stub.storeSettingsUpdates, update)
+	}
+}
+
+func TestGroupMatching_CachingClientForwardsEveryCall(t *testing.T) {
+	want := printago.GroupMatchingResult{
+		Truncated: true,
+		Groups: []printago.MatchGroup{{
+			MemberPrintJobIDs:        []string{"job-a"},
+			RepresentativePrintJobID: "job-a",
+			Printers: []printago.MatchPrinterVerdict{{
+				PrinterID:        "printer-1",
+				Matched:          true,
+				FirstFailedCheck: "ready",
+			}},
+		}},
+	}
+	stub := &stubClient{groupMatching: want}
+	c := printago.NewCachingClientWithTTL(stub, time.Minute)
+
+	got1, err := c.GroupMatching(context.Background(), []string{"job-a", "job-b"})
+	if err != nil {
+		t.Fatalf("first call: unexpected error: %v", err)
+	}
+	got2, err := c.GroupMatching(context.Background(), []string{"job-c"})
+	if err != nil {
+		t.Fatalf("second call: unexpected error: %v", err)
+	}
+
+	if len(stub.groupMatchingCalls) != 2 {
+		t.Fatalf("underlying client called %d times, want 2", len(stub.groupMatchingCalls))
+	}
+	if !reflect.DeepEqual(stub.groupMatchingCalls[0], []string{"job-a", "job-b"}) || !reflect.DeepEqual(stub.groupMatchingCalls[1], []string{"job-c"}) {
+		t.Errorf("printJobIds = %#v, want [job-a job-b] then [job-c]", stub.groupMatchingCalls)
+	}
+	if !reflect.DeepEqual(got1, want) || !reflect.DeepEqual(got2, want) {
+		t.Errorf("got %+v and %+v, want %+v", got1, got2, want)
 	}
 }
 

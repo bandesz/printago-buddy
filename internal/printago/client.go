@@ -29,6 +29,7 @@ type ClientInterface interface {
 	UpdatePrintJobTags(ctx context.Context, jobID string, tags map[string]string) error
 	GetStoreSettings(ctx context.Context) (StoreSettings, error)
 	UpdateStoreSettings(ctx context.Context, update StoreSettingsUpdate) error
+	GroupMatching(ctx context.Context, printJobIDs []string) (GroupMatchingResult, error)
 }
 
 // Client is an HTTP client for the Printago REST API.
@@ -209,4 +210,20 @@ func (c *Client) GetStoreSettings(ctx context.Context) (StoreSettings, error) {
 // UpdateStoreSettings patches store settings with only the fields set on update.
 func (c *Client) UpdateStoreSettings(ctx context.Context, update StoreSettingsUpdate) error {
 	return c.do(ctx, http.MethodPatch, "/v1/settings/store", update, nil)
+}
+
+// GroupMatching posts direct queue group matching for the given print job ids.
+func (c *Client) GroupMatching(ctx context.Context, printJobIDs []string) (GroupMatchingResult, error) {
+	body := struct {
+		Use         string   `json:"use"`
+		PrintJobIDs []string `json:"printJobIds"`
+	}{
+		Use:         "direct",
+		PrintJobIDs: printJobIDs,
+	}
+	var result GroupMatchingResult
+	if err := c.do(ctx, http.MethodPost, "/v1/print-jobs/queue/group-matching", body, &result); err != nil {
+		return GroupMatchingResult{}, err
+	}
+	return result, nil
 }

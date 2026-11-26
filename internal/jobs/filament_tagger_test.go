@@ -55,6 +55,9 @@ func (m *mockClient) UpdateStoreSettings(_ context.Context, _ printago.StoreSett
 func (m *mockClient) UpdatePrintJobTags(_ context.Context, _ string, _ map[string]string) error {
 	return nil
 }
+func (m *mockClient) GroupMatching(_ context.Context, _ []string) (printago.GroupMatchingResult, error) {
+	return printago.GroupMatchingResult{}, nil
+}
 func (m *mockClient) UpdatePrinterTags(_ context.Context, printerID string, tags []string) error {
 	idx := len(m.updateTagsCalls)
 	m.updateTagsCalls = append(m.updateTagsCalls, updateTagsCall{printerID: printerID, tags: tags})

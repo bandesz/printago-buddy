@@ -136,6 +136,11 @@ func (c *CachingClient) UpdateStoreSettings(ctx context.Context, update StoreSet
 	return c.inner.UpdateStoreSettings(ctx, update)
 }
 
+// GroupMatching delegates directly to the inner client (not cached).
+func (c *CachingClient) GroupMatching(ctx context.Context, printJobIDs []string) (GroupMatchingResult, error) {
+	return c.inner.GroupMatching(ctx, printJobIDs)
+}
+
 // GetMaterials returns all materials, fetching from the API only when the
 // cached result has expired.
 func (c *CachingClient) GetMaterials(ctx context.Context) ([]Material, error) {

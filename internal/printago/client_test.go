@@ -662,6 +662,119 @@ func TestUpdatePrintJobTags_absentTagKeysStayAbsent(t *testing.T) {
 	})
 }
 
+func TestGroupMatching(t *testing.T) {
+	cases := []struct {
+		name     string
+		ids      []string
+		response string
+		wantBody string
+		want     printago.GroupMatchingResult
+	}{
+		{
+			name: "sends direct ids and keeps verdict fields",
+			ids:  []string{"job-a", "job-b"},
+			response: `{
+				"truncated": true,
+				"groups": [{
+					"memberPrintJobIds": ["job-a", "job-b"],
+					"representativePrintJobId": "job-a",
+					"printers": [{
+						"printerId": "printer-1",
+						"matched": true,
+						"compatible": false,
+						"firstFailedCheck": "tags-match"
+					}]
+				}]
+			}`,
+			wantBody: `{"use":"direct","printJobIds":["job-a","job-b"]}`,
+			want: printago.GroupMatchingResult{
+				Truncated: true,
+				Groups: []printago.MatchGroup{{
+					MemberPrintJobIDs:        []string{"job-a", "job-b"},
+					RepresentativePrintJobID: "job-a",
+					Printers: []printago.MatchPrinterVerdict{{
+						PrinterID:        "printer-1",
+						Matched:          true,
+						Compatible:       false,
+						FirstFailedCheck: "tags-match",
+					}},
+				}},
+			},
+		},
+		{
+			name: "null or absent firstFailedCheck is empty",
+			ids:  []string{"job-c"},
+			response: `{
+				"truncated": false,
+				"groups": [{
+					"memberPrintJobIds": ["job-c"],
+					"representativePrintJobID": "job-c",
+					"printers": [
+						{
+							"printerId": "printer-2",
+							"matched": false,
+							"compatible": true,
+							"firstFailedCheck": null
+						},
+						{
+							"printerId": "printer-3",
+							"matched": false,
+							"compatible": false
+						}
+					]
+				}]
+			}`,
+			wantBody: `{"use":"direct","printJobIds":["job-c"]}`,
+			want: printago.GroupMatchingResult{
+				Groups: []printago.MatchGroup{{
+					MemberPrintJobIDs:        []string{"job-c"},
+					RepresentativePrintJobID: "job-c",
+					Printers: []printago.MatchPrinterVerdict{
+						{PrinterID: "printer-2", Compatible: true},
+						{PrinterID: "printer-3"},
+					},
+				}},
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var gotMethod, gotPath string
+			var body []byte
+			_, client := newTestServer(t, authHandler(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotMethod = r.Method
+				gotPath = r.URL.Path
+				var err error
+				body, err = io.ReadAll(r.Body)
+				if err != nil {
+					t.Fatal(err)
+				}
+				w.Header().Set("content-type", "application/json")
+				_, _ = w.Write([]byte(tc.response))
+			})))
+
+			got, err := client.GroupMatching(context.Background(), tc.ids)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if body == nil {
+				t.Fatal("POST /v1/print-jobs/queue/group-matching was not called")
+			}
+			if gotMethod != http.MethodPost {
+				t.Errorf("method = %q, want POST", gotMethod)
+			}
+			if gotPath != "/v1/print-jobs/queue/group-matching" {
+				t.Errorf("path = %q, want /v1/print-jobs/queue/group-matching", gotPath)
+			}
+			assertJSON(t, body, tc.wantBody)
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("got %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
 func assertPrinterTags(t *testing.T, tags any, want map[string]string) {
 	t.Helper()
 	encoded, err := json.Marshal(tags)
