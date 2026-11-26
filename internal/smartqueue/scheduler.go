@@ -2,6 +2,7 @@ package smartqueue
 
 import (
 	"context"
+	"errors"
 	"maps"
 	"slices"
 	"sync"
@@ -18,15 +19,27 @@ type Config struct {
 
 // Scheduler turns smart queue on and publishes the plan cache.
 type Scheduler struct {
-	client printago.ClientInterface
-	cfg    Config
-	cache  PlanCache
-	mu     sync.Mutex
+	client          printago.ClientInterface
+	cfg             Config
+	cache           PlanCache
+	mu              sync.Mutex
+	settingsPending bool
+	applyPending    bool
+	dispatchPending bool
+	hasSig          bool
+	assignmentSig   string
+	dispatchSig     string
+	pendingPlan     *Plan
 }
 
+// errMatchingTruncated is returned when a group-matching request that names
+// job ids is still truncated.
+var errMatchingTruncated = errors.New("group matching truncated")
+
 // NewScheduler returns a scheduler that reads and writes cfg.StateFile.
+// settingsPending starts set so the first enabled poll pauses Printago matching.
 func NewScheduler(client printago.ClientInterface, cfg Config) *Scheduler {
-	return &Scheduler{client: client, cfg: cfg}
+	return &Scheduler{client: client, cfg: cfg, settingsPending: true}
 }
 
 // Snapshot returns the published plan. It is nil before the first publish.
@@ -55,16 +68,13 @@ func (s *Scheduler) Enable(ctx context.Context) error {
 	if err = SaveState(s.cfg.StateFile, state); err != nil {
 		return err
 	}
+	s.settingsPending = true
 	s.publishEnabled()
 
-	matching := false
-	merging := false
-	if err = s.client.UpdateStoreSettings(ctx, printago.StoreSettingsUpdate{
-		AutomaticQueueMatching: &matching,
-		PlateMerging:           &printago.PlateMergingUpdate{AutomaticMerging: &merging},
-	}); err != nil {
+	if err = s.pauseMatching(ctx); err != nil {
 		return err
 	}
+	s.settingsPending = false
 
 	jobs, err := s.client.GetPrintJobs(ctx)
 	if err != nil {
@@ -159,6 +169,332 @@ func (s *Scheduler) Disable(ctx context.Context) error {
 	}
 	s.publishSwitch(false)
 	return nil
+}
+
+// Poll reads the pending queue and publishes the assignment plan.
+// It patches Printago when the switch is on and a signature changed, and when a
+// turn-on settings patch, reservation diff, or queue run is still unfinished.
+func (s *Scheduler) Poll(ctx context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	state, err := LoadState(s.cfg.StateFile)
+	if err != nil {
+		return s.failPublish(err)
+	}
+	jobs, err := s.client.GetPrintJobs(ctx)
+	if err != nil {
+		return s.failPublish(err)
+	}
+	state, err = s.dropStalePriorities(state, jobs)
+	if err != nil {
+		return s.failPublish(err)
+	}
+	printers, err := s.client.GetPrinters(ctx)
+	if err != nil {
+		return s.failPublish(err)
+	}
+	slots, err := s.client.GetPrinterSlots(ctx)
+	if err != nil {
+		return s.failPublish(err)
+	}
+	groups, err := s.loadGroups(ctx, jobs)
+	if err != nil {
+		return s.failPublish(err)
+	}
+
+	input := signatureInput(jobs, printers, slots, groups, state.PrioritizedJobIDs)
+	assignSig := AssignmentSignature(input)
+	dispatchSig := DispatchSignature(input)
+	assignmentChanged := !s.hasSig || assignSig != s.assignmentSig
+	dispatchChanged := !s.hasSig || dispatchSig != s.dispatchSig
+
+	if state.Enabled && s.settingsPending {
+		if err = s.pauseMatching(ctx); err != nil {
+			return s.failPublish(err)
+		}
+		s.settingsPending = false
+	}
+
+	if assignmentChanged {
+		return s.publishRecomputed(ctx, state, jobs, printers, groups, assignSig, dispatchSig)
+	}
+	if state.Enabled && s.applyPending && s.pendingPlan != nil {
+		return s.retryApply(ctx, state, jobs, groups, assignSig, dispatchSig)
+	}
+	if state.Enabled && (dispatchChanged || s.dispatchPending) {
+		return s.retryDispatch(ctx, groups, assignSig, dispatchSig)
+	}
+	s.storeSigs(assignSig, dispatchSig)
+	if !state.Enabled {
+		s.dispatchPending = false
+	}
+	s.clearErr()
+	return nil
+}
+
+func (s *Scheduler) publishRecomputed(ctx context.Context, state State, jobs []printago.PrintJob, printers []printago.Printer, groups []PlanGroup, assignSig, dispatchSig string) error {
+	plan := BuildPlan(PlanInput{
+		Jobs:         planJobs(jobs),
+		PrinterNames: printerNames(printers),
+		Groups:       groups,
+		HalfLife:     s.cfg.HalfLife,
+		Now:          time.Now(),
+		Prioritized:  idSet(state.PrioritizedJobIDs),
+	})
+	plan.Enabled = state.Enabled
+	if !state.Enabled {
+		s.applyPending = false
+		s.pendingPlan = nil
+		s.dispatchPending = false
+		s.storeSigs(assignSig, dispatchSig)
+		s.cache.Publish(plan)
+		return nil
+	}
+	if err := s.reserve(ctx, plan, jobs); err != nil {
+		s.applyPending = true
+		copied := plan
+		s.pendingPlan = &copied
+		s.storeSigs(assignSig, dispatchSig)
+		return s.failPublish(err)
+	}
+	s.applyPending = false
+	s.pendingPlan = nil
+	s.storeSigs(assignSig, dispatchSig)
+	if err := s.runIfReady(ctx, plan, groups); err != nil {
+		plan.Err = err.Error()
+		s.cache.Publish(plan)
+		return err
+	}
+	s.cache.Publish(plan)
+	return nil
+}
+
+func (s *Scheduler) retryApply(ctx context.Context, state State, jobs []printago.PrintJob, groups []PlanGroup, assignSig, dispatchSig string) error {
+	plan := *s.pendingPlan
+	plan.Enabled = state.Enabled
+	if err := s.reserve(ctx, plan, jobs); err != nil {
+		return s.failPublish(err)
+	}
+	s.applyPending = false
+	s.pendingPlan = nil
+	s.storeSigs(assignSig, dispatchSig)
+	if err := s.runIfReady(ctx, plan, groups); err != nil {
+		plan.Err = err.Error()
+		s.cache.Publish(plan)
+		return err
+	}
+	s.cache.Publish(plan)
+	return nil
+}
+
+func (s *Scheduler) retryDispatch(ctx context.Context, groups []PlanGroup, assignSig, dispatchSig string) error {
+	s.storeSigs(assignSig, dispatchSig)
+	current := s.cache.Snapshot()
+	if current == nil || !assignedPrinterReady(*current, groups) {
+		s.dispatchPending = false
+		s.clearErr()
+		return nil
+	}
+	if err := s.client.RunQueue(ctx); err != nil {
+		s.dispatchPending = true
+		return s.failPublish(err)
+	}
+	s.dispatchPending = false
+	s.clearErr()
+	return nil
+}
+
+func (s *Scheduler) reserve(ctx context.Context, plan Plan, jobs []printago.PrintJob) error {
+	return Reserve(plan, reserveJobs(jobs), func(id string, tags map[string]string) error {
+		return s.client.UpdatePrintJobTags(ctx, id, tags)
+	})
+}
+
+func (s *Scheduler) runIfReady(ctx context.Context, plan Plan, groups []PlanGroup) error {
+	if !assignedPrinterReady(plan, groups) {
+		s.dispatchPending = false
+		return nil
+	}
+	if err := s.client.RunQueue(ctx); err != nil {
+		s.dispatchPending = true
+		return err
+	}
+	s.dispatchPending = false
+	return nil
+}
+
+func (s *Scheduler) pauseMatching(ctx context.Context) error {
+	matching := false
+	merging := false
+	return s.client.UpdateStoreSettings(ctx, printago.StoreSettingsUpdate{
+		AutomaticQueueMatching: &matching,
+		PlateMerging:           &printago.PlateMergingUpdate{AutomaticMerging: &merging},
+	})
+}
+
+func (s *Scheduler) dropStalePriorities(state State, jobs []printago.PrintJob) (State, error) {
+	if len(state.PrioritizedJobIDs) == 0 {
+		return state, nil
+	}
+	pending := make(map[string]struct{}, len(jobs))
+	for _, job := range jobs {
+		pending[job.ID] = struct{}{}
+	}
+	kept := make([]string, 0, len(state.PrioritizedJobIDs))
+	changed := false
+	for _, id := range state.PrioritizedJobIDs {
+		if _, ok := pending[id]; !ok {
+			changed = true
+			continue
+		}
+		kept = append(kept, id)
+	}
+	if !changed {
+		return state, nil
+	}
+	state.PrioritizedJobIDs = kept
+	if err := SaveState(s.cfg.StateFile, state); err != nil {
+		return State{}, err
+	}
+	return state, nil
+}
+
+func (s *Scheduler) loadGroups(ctx context.Context, jobs []printago.PrintJob) ([]PlanGroup, error) {
+	ids := jobIDs(jobs)
+	result, err := s.client.GroupMatching(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	if result.Truncated {
+		missing := missingMemberIDs(ids, result.Groups)
+		retry, retryErr := s.client.GroupMatching(ctx, missing)
+		if retryErr != nil {
+			return nil, retryErr
+		}
+		if retry.Truncated {
+			return nil, errMatchingTruncated
+		}
+		result.Groups = append(result.Groups, retry.Groups...)
+	}
+	return s.planGroups(ctx, result)
+}
+
+func (s *Scheduler) failPublish(err error) error {
+	if current := s.cache.Snapshot(); current != nil {
+		current.Err = err.Error()
+		s.cache.Publish(*current)
+	}
+	return err
+}
+
+func (s *Scheduler) clearErr() {
+	current := s.cache.Snapshot()
+	if current == nil || current.Err == "" {
+		return
+	}
+	current.Err = ""
+	s.cache.Publish(*current)
+}
+
+func (s *Scheduler) storeSigs(assignment, dispatch string) {
+	s.hasSig = true
+	s.assignmentSig = assignment
+	s.dispatchSig = dispatch
+}
+
+func signatureInput(jobs []printago.PrintJob, printers []printago.Printer, slots []printago.PrinterSlot, groups []PlanGroup, prioritized []string) SignatureInput {
+	sigJobs := make([]SignatureJob, len(jobs))
+	for i, job := range jobs {
+		sigJobs[i] = SignatureJob{
+			ID:           job.ID,
+			Priority:     job.Priority,
+			CreatedAt:    job.CreatedAt,
+			RequiredTags: job.RequiredPrinterTags,
+		}
+	}
+	slotsByPrinter := make(map[string][]SignatureSlot)
+	for _, slot := range slots {
+		slotsByPrinter[slot.PrinterID] = append(slotsByPrinter[slot.PrinterID], SignatureSlot{
+			MaterialID: derefString(slot.MaterialID),
+			VariantID:  derefString(slot.VariantID),
+		})
+	}
+	sigPrinters := make([]SignaturePrinter, len(printers))
+	for i, printer := range printers {
+		sigPrinters[i] = SignaturePrinter{
+			ID:     printer.ID,
+			Tags:   printer.Tags,
+			Slots:  slotsByPrinter[printer.ID],
+			Checks: printerChecks(printer.ID, groups),
+		}
+	}
+	return SignatureInput{
+		Jobs:              sigJobs,
+		Printers:          sigPrinters,
+		PrioritizedJobIDs: prioritized,
+	}
+}
+
+func printerChecks(printerID string, groups []PlanGroup) []Check {
+	var checks []Check
+	for _, group := range groups {
+		verdict, ok := findVerdict(group.Verdicts, printerID)
+		if !ok {
+			continue
+		}
+		if existing, found := group.Checks[printerID]; found {
+			checks = append(checks, existing...)
+			continue
+		}
+		checks = append(checks, synthesizedChecks(verdict)...)
+	}
+	return checks
+}
+
+func synthesizedChecks(verdict Verdict) []Check {
+	var checks []Check
+	if verdict.FirstFailedCheck != "" {
+		checks = append(checks, Check{Code: verdict.FirstFailedCheck, Passed: false})
+	}
+	if printerCanStart(verdict) {
+		checks = append(checks, Check{Code: "ready", Passed: true})
+	}
+	return checks
+}
+
+func printerCanStart(verdict Verdict) bool {
+	if !verdictEligible(verdict) {
+		return false
+	}
+	if verdict.FirstFailedCheck == "" {
+		return true
+	}
+	return nonBlockingFailure(verdict.FirstFailedCheck) && verdict.FirstFailedCheck != "ready"
+}
+
+func missingMemberIDs(ids []string, groups []printago.MatchGroup) []string {
+	seen := make(map[string]struct{})
+	for _, group := range groups {
+		for _, id := range group.MemberPrintJobIDs {
+			seen[id] = struct{}{}
+		}
+	}
+	missing := make([]string, 0)
+	for _, id := range ids {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		missing = append(missing, id)
+	}
+	return missing
+}
+
+func derefString(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }
 
 // publishEnabled reports the switch on without replacing the published rows.
