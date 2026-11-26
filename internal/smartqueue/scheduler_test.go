@@ -153,6 +153,70 @@ func TestEnableDoesNotRunQueueWhenNoAssignedPrinterIsReady(t *testing.T) {
 	})
 }
 
+func TestEnableTagsMatchReadyCheckGatesRunQueue(t *testing.T) {
+	t.Run("failed ready does not run", func(t *testing.T) {
+		env := newEnableEnv(t)
+		setTagsMatchReady(env.api, false)
+
+		if err := env.sched.Enable(context.Background()); err != nil {
+			t.Fatalf("Enable() error = %v", err)
+		}
+
+		snap := env.sched.Snapshot()
+		assertEnabled(t, snap)
+		assertRow(t, snap, "job-1", smartqueue.Row{
+			PrinterID: "p1", PrinterName: "Alpha", Status: smartqueue.StatusAssigned,
+		})
+		assertTagPatches(t, env.api.tagPatches, map[string]map[string]string{
+			"job-1": {"filament.type": "PLA", "printer.id": "p1"},
+		})
+		if !slices.Equal(env.api.troubleIDs, []string{"job-1"}) {
+			t.Fatalf("troubleshoot ids = %#v, want [job-1]", env.api.troubleIDs)
+		}
+		if env.api.runCalls != 0 {
+			t.Fatalf("RunQueue calls = %d, want 0", env.api.runCalls)
+		}
+	})
+
+	t.Run("passed ready runs", func(t *testing.T) {
+		env := newEnableEnv(t)
+		setTagsMatchReady(env.api, true)
+
+		if err := env.sched.Enable(context.Background()); err != nil {
+			t.Fatalf("Enable() error = %v", err)
+		}
+
+		assertRow(t, env.sched.Snapshot(), "job-1", smartqueue.Row{
+			PrinterID: "p1", PrinterName: "Alpha", Status: smartqueue.StatusAssigned,
+		})
+		assertCallOrder(t, env.api.calls, "update-tags", "run-queue")
+		if env.api.runCalls != 1 {
+			t.Fatalf("RunQueue calls = %d, want 1", env.api.runCalls)
+		}
+	})
+}
+
+func setTagsMatchReady(api *enableAPI, readyPassed bool) {
+	api.setSingleJob("job-1", false, "tags-match")
+	api.trouble = printago.MatchingTroubleshootResult{
+		Printers: []printago.TroubleshootPrinter{{
+			PrinterID: "p1",
+			Checks: []printago.TroubleshootCheck{
+				{Code: "ready", Passed: readyPassed},
+				{
+					Code:   "tags-match",
+					Passed: false,
+					Comparisons: []printago.TroubleshootComparison{
+						{Key: "printer.id", Requirement: "p1", Matched: false},
+						{Key: "buddy-hold", Requirement: "buddy-hold", Matched: false},
+						{Key: "filament.type", Requirement: "PLA", Matched: true},
+					},
+				},
+			},
+		}},
+	}
+}
+
 func TestEnableRunQueueErrorPublishesPlanSetsErr(t *testing.T) {
 	env := newEnableEnv(t)
 	env.api.setSingleJob("job-1", true, "")

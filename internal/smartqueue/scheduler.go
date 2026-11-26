@@ -238,30 +238,48 @@ func idSet(ids []string) map[string]struct{} {
 }
 
 // assignedPrinterReady reports whether a plan assigns a job to an eligible printer
-// whose first failed check is not ready. An empty check is ready.
+// that can start. An empty first failed check is ready, and that signal does not
+// need a troubleshoot list. When the printer's checks include ready, it must have passed.
 func assignedPrinterReady(plan Plan, groups []PlanGroup) bool {
 	for jobID, row := range plan.Rows {
 		if row.Status != StatusAssigned {
 			continue
 		}
-		verdict, ok := memberVerdict(groups, jobID, row.PrinterID)
-		if ok && Eligible([]Verdict{verdict}, verdict.PrinterID) && verdict.FirstFailedCheck != "ready" {
+		verdict, checks, ok := memberVerdict(groups, jobID, row.PrinterID)
+		if ok && Eligible([]Verdict{verdict}, verdict.PrinterID) && printerReady(verdict, checks) {
 			return true
 		}
 	}
 	return false
 }
 
-func memberVerdict(groups []PlanGroup, jobID, printerID string) (Verdict, bool) {
+func printerReady(verdict Verdict, checks []Check) bool {
+	sawReady := false
+	for _, check := range checks {
+		if check.Code != "ready" {
+			continue
+		}
+		sawReady = true
+		if !check.Passed {
+			return false
+		}
+	}
+	if sawReady {
+		return true
+	}
+	return verdict.FirstFailedCheck != "ready"
+}
+
+func memberVerdict(groups []PlanGroup, jobID, printerID string) (Verdict, []Check, bool) {
 	for _, group := range groups {
 		if !slices.Contains(group.MemberIDs, jobID) {
 			continue
 		}
 		for _, verdict := range group.Verdicts {
 			if verdict.PrinterID == printerID {
-				return verdict, true
+				return verdict, group.Checks[printerID], true
 			}
 		}
 	}
-	return Verdict{}, false
+	return Verdict{}, nil, false
 }
