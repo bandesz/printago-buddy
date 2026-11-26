@@ -60,6 +60,104 @@ func TestEnableReadsSettingsSavesMergingSnapshotThenPausesMatching(t *testing.T)
 	}
 }
 
+func TestEnableKeepsSavedAutomaticMerging(t *testing.T) {
+	env := newEnableEnv(t)
+	saveSchedulerState(t, env.path, smartqueue.State{
+		Enabled:            true,
+		HasMergingSnapshot: true,
+		AutomaticMerging:   true,
+		PrioritizedJobIDs:  []string{"keep"},
+	})
+	env.api.settings.PlateMerging.AutomaticMerging = false
+
+	if err := env.sched.Enable(context.Background()); err != nil {
+		t.Fatalf("Enable() error = %v", err)
+	}
+
+	assertState(t, env.path, smartqueue.State{
+		Enabled:            true,
+		HasMergingSnapshot: true,
+		AutomaticMerging:   true,
+		PrioritizedJobIDs:  []string{"keep"},
+	})
+	if !env.api.stateAtPatch.HasMergingSnapshot || !env.api.stateAtPatch.AutomaticMerging {
+		t.Fatalf("state at settings patch = %+v, want the saved merging snapshot", env.api.stateAtPatch)
+	}
+	assertMatchingPaused(t, env.api.updates[0])
+}
+
+func TestEnableTruncationRetriesMissingJobIDs(t *testing.T) {
+	env := newEnableEnv(t)
+	env.api.printers = []printago.Printer{{ID: "p1", Name: "Alpha"}}
+	env.api.jobs = []printago.PrintJob{pendingJob("a", time.Hour), pendingJob("b", 3*time.Hour)}
+	env.api.groupScript = []scriptedMatch{
+		{result: printago.GroupMatchingResult{
+			Truncated: true,
+			Groups: []printago.MatchGroup{{
+				RepresentativePrintJobID: "a",
+				MemberPrintJobIDs:        []string{"a"},
+				Printers: []printago.MatchPrinterVerdict{{
+					PrinterID: "p1",
+					Matched:   true,
+				}},
+			}},
+		}},
+		{result: printago.GroupMatchingResult{
+			Groups: []printago.MatchGroup{{
+				RepresentativePrintJobID: "b",
+				MemberPrintJobIDs:        []string{"b"},
+				Printers: []printago.MatchPrinterVerdict{{
+					PrinterID: "p1",
+					Matched:   true,
+				}},
+			}},
+		}},
+	}
+
+	if err := env.sched.Enable(context.Background()); err != nil {
+		t.Fatalf("Enable() error = %v", err)
+	}
+
+	if len(env.api.groupIDs) != 2 ||
+		!slices.Equal(env.api.groupIDs[0], []string{"a", "b"}) ||
+		!slices.Equal(env.api.groupIDs[1], []string{"b"}) {
+		t.Fatalf("group matching ids = %#v, want [a b] then [b]", env.api.groupIDs)
+	}
+	snap := env.sched.Snapshot()
+	assertEnabled(t, snap)
+	assertRow(t, snap, "b", smartqueue.Row{
+		PrinterID: "p1", PrinterName: "Alpha", Status: smartqueue.StatusAssigned,
+	})
+	assertRow(t, snap, "a", smartqueue.Row{Status: smartqueue.StatusWaiting})
+}
+
+func TestEnableNamedTruncationDoesNotParkOrRun(t *testing.T) {
+	env := newEnableEnv(t)
+	env.api.jobs = []printago.PrintJob{pendingJob("job-1", time.Hour), pendingJob("job-2", time.Hour)}
+	env.api.groupScript = []scriptedMatch{
+		{result: printago.GroupMatchingResult{Truncated: true}},
+		{result: printago.GroupMatchingResult{Truncated: true}},
+	}
+
+	err := env.sched.Enable(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "truncated") {
+		t.Fatalf("Enable() error = %v, want truncation", err)
+	}
+	for _, call := range env.api.calls {
+		if call == "update-tags" || call == "run-queue" {
+			t.Fatalf("calls = %v, want no park and no queue run", env.api.calls)
+		}
+	}
+	if len(env.api.groupIDs) != 2 || !slices.Equal(env.api.groupIDs[1], []string{"job-1", "job-2"}) {
+		t.Fatalf("group matching ids = %#v, want a named retry of the omitted jobs", env.api.groupIDs)
+	}
+	snap := env.sched.Snapshot()
+	assertEnabled(t, snap)
+	if len(snap.Rows) != 0 {
+		t.Fatalf("rows = %#v, want the omitted jobs left unpublished", snap.Rows)
+	}
+}
+
 func TestEnableWritesReservationsPublishesPlanAndRunsQueue(t *testing.T) {
 	t.Run("empty failed check", func(t *testing.T) {
 		env := newEnableEnv(t)
@@ -1561,7 +1659,7 @@ func TestPollPatchesSettingsBeforeRetryWhenSignaturesMatch(t *testing.T) {
 }
 
 func TestPollReadErrorKeepsPublishedPlan(t *testing.T) {
-	t.Run("first jobs error does not publish", func(t *testing.T) {
+	t.Run("first jobs error publishes enabled without rows", func(t *testing.T) {
 		env := newEnableEnv(t)
 		saveSchedulerState(t, env.path, smartqueue.State{Enabled: true, HasMergingSnapshot: true})
 		env.api.jobsErr = errors.New("jobs")
@@ -1570,8 +1668,10 @@ func TestPollReadErrorKeepsPublishedPlan(t *testing.T) {
 		if !errors.Is(err, env.api.jobsErr) {
 			t.Fatalf("Poll() error = %v, want %v", err, env.api.jobsErr)
 		}
-		if env.sched.Snapshot() != nil {
-			t.Fatalf("Snapshot() = %+v, want nil", env.sched.Snapshot())
+		snap := env.sched.Snapshot()
+		assertEnabled(t, snap)
+		if snap.Err != err.Error() || len(snap.Rows) != 0 {
+			t.Fatalf("Snapshot() = %+v, want enabled with the jobs error and no rows", snap)
 		}
 		assertNoPrintagoWrites(t, env.api)
 	})
@@ -1670,8 +1770,9 @@ func TestPollDropsPrioritizeIDsMissingFromPending(t *testing.T) {
 	if !errors.Is(err, env.api.groupErr) {
 		t.Fatalf("Poll() error = %v, want %v", err, env.api.groupErr)
 	}
-	if env.sched.Snapshot() != nil {
-		t.Fatalf("Snapshot() = %+v, want nil", env.sched.Snapshot())
+	snap := env.sched.Snapshot()
+	if snap == nil || snap.Enabled || snap.Err != err.Error() || len(snap.Rows) != 0 {
+		t.Fatalf("Snapshot() = %+v, want disabled with the matching error and no rows", snap)
 	}
 	assertState(t, env.path, smartqueue.State{PrioritizedJobIDs: []string{"keep", "child"}})
 	if !slices.Equal(env.api.prioritizedAtMatch, []string{"keep", "child"}) {
@@ -1771,7 +1872,7 @@ func TestPollNamedTruncationKeepsPublishedPlan(t *testing.T) {
 		assertNoPrintagoWrites(t, env.api)
 	})
 
-	t.Run("does not patch when nothing was published", func(t *testing.T) {
+	t.Run("publishes enabled without rows", func(t *testing.T) {
 		env := newEnableEnv(t)
 		saveSchedulerState(t, env.path, smartqueue.State{Enabled: true, HasMergingSnapshot: true})
 		env.api.setSingleJob("job-1", true, "")
@@ -1784,10 +1885,82 @@ func TestPollNamedTruncationKeepsPublishedPlan(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "truncated") {
 			t.Fatalf("Poll() error = %v, want truncation", err)
 		}
-		if env.sched.Snapshot() != nil {
-			t.Fatalf("Snapshot() = %+v, want nil", env.sched.Snapshot())
+		snap := env.sched.Snapshot()
+		assertEnabled(t, snap)
+		if snap.Err != err.Error() || len(snap.Rows) != 0 {
+			t.Fatalf("Snapshot() = %+v, want enabled with the truncation error and no rows", snap)
 		}
 		assertNoPrintagoWrites(t, env.api)
+	})
+}
+
+func TestPollMissingFileFetchErrorLeavesSnapshotNil(t *testing.T) {
+	api := &enableAPI{}
+	api.setOlderWins()
+	api.jobsErr = errors.New("jobs")
+	path := filepath.Join(t.TempDir(), "missing", "smart-queue.json")
+	sched := smartqueue.NewScheduler(api, smartqueue.Config{HalfLife: time.Minute, StateFile: path})
+
+	err := sched.Poll(context.Background())
+	if !errors.Is(err, api.jobsErr) {
+		t.Fatalf("Poll() error = %v, want %v", err, api.jobsErr)
+	}
+	if sched.Snapshot() != nil {
+		t.Fatalf("Snapshot() = %+v, want nil", sched.Snapshot())
+	}
+	assertNoPrintagoWrites(t, api)
+}
+
+func TestPollDisabledFileFetchErrorPublishesSwitch(t *testing.T) {
+	env := newEnableEnv(t)
+	env.api.jobsErr = errors.New("jobs")
+
+	err := env.sched.Poll(context.Background())
+	if !errors.Is(err, env.api.jobsErr) {
+		t.Fatalf("Poll() error = %v, want %v", err, env.api.jobsErr)
+	}
+	snap := env.sched.Snapshot()
+	if snap == nil || snap.Enabled || snap.Err != err.Error() || len(snap.Rows) != 0 {
+		t.Fatalf("Snapshot() = %+v, want disabled with the jobs error and no rows", snap)
+	}
+	assertNoPrintagoWrites(t, env.api)
+}
+
+func TestPollReservationFailurePublishesEnabledWithoutRows(t *testing.T) {
+	env := newEnableEnv(t)
+	saveSchedulerState(t, env.path, smartqueue.State{
+		Enabled:            true,
+		HasMergingSnapshot: true,
+		AutomaticMerging:   true,
+	})
+	env.api.setSingleJob("job-1", true, "")
+	env.api.tagErr = errors.New("tag patch")
+
+	err := env.sched.Poll(context.Background())
+	if !errors.Is(err, env.api.tagErr) {
+		t.Fatalf("Poll() error = %v, want %v", err, env.api.tagErr)
+	}
+	snap := env.sched.Snapshot()
+	assertEnabled(t, snap)
+	if snap.Err != err.Error() || len(snap.Rows) != 0 {
+		t.Fatalf("Snapshot() = %+v, want enabled with the reservation error and no rows", snap)
+	}
+	if env.api.runCalls != 0 {
+		t.Fatalf("RunQueue calls = %d, want 0", env.api.runCalls)
+	}
+
+	env.api.tagErr = nil
+	env.api.resetCalls()
+	if err = env.sched.Poll(context.Background()); err != nil {
+		t.Fatalf("Poll() error = %v", err)
+	}
+	retried := env.sched.Snapshot()
+	assertEnabled(t, retried)
+	if retried.Err != "" {
+		t.Fatalf("Err = %q, want empty after the retry", retried.Err)
+	}
+	assertRow(t, retried, "job-1", smartqueue.Row{
+		PrinterID: "p1", PrinterName: "Alpha", Status: smartqueue.StatusAssigned,
 	})
 }
 

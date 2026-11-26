@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"maps"
+	"os"
 	"slices"
 	"sync"
 	"time"
@@ -90,8 +91,10 @@ func (s *Scheduler) Enable(ctx context.Context) error {
 		return err
 	}
 	state.Enabled = true
+	if !state.HasMergingSnapshot {
+		state.AutomaticMerging = settings.PlateMerging.AutomaticMerging
+	}
 	state.HasMergingSnapshot = true
-	state.AutomaticMerging = settings.PlateMerging.AutomaticMerging
 	if err = SaveState(s.cfg.StateFile, state); err != nil {
 		return err
 	}
@@ -113,12 +116,7 @@ func (s *Scheduler) Enable(ctx context.Context) error {
 		s.markApplyPending(nil)
 		return err
 	}
-	matchingResult, err := s.client.GroupMatching(ctx, jobIDs(jobs))
-	if err != nil {
-		s.markApplyPending(nil)
-		return err
-	}
-	groups, err := s.planGroups(ctx, matchingResult)
+	groups, err := s.loadGroups(ctx, jobs)
 	if err != nil {
 		s.markApplyPending(nil)
 		return err
@@ -267,6 +265,7 @@ func (s *Scheduler) Poll(ctx context.Context) error {
 	if err != nil {
 		return s.failPublish(err)
 	}
+	s.publishLoaded(state)
 	jobs, err := s.client.GetPrintJobs(ctx)
 	if err != nil {
 		return s.failPublish(err)
@@ -588,6 +587,15 @@ func derefString(value *string) string {
 		return ""
 	}
 	return *value
+}
+
+// publishLoaded reports the saved switch before fallible poll work.
+// A missing file stays unpublished until a plan is ready, so a failed first fetch leaves Snapshot nil.
+func (s *Scheduler) publishLoaded(state State) {
+	if _, err := os.Stat(s.cfg.StateFile); err != nil {
+		return
+	}
+	s.publishSwitch(state.Enabled)
 }
 
 // publishEnabled reports the switch on without replacing the published rows.
