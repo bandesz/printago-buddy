@@ -409,6 +409,262 @@ func TestEnableTroubleshootsRepresentativeTagsMatch(t *testing.T) {
 	}
 }
 
+func TestDisableClearsManagedTagsRestoresMergingThenSavesOff(t *testing.T) {
+	cases := []struct {
+		name    string
+		merging bool
+	}{
+		{name: "restores automatic merging", merging: true},
+		{name: "restores automatic merging off", merging: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			env := enabledScheduler(t, tc.merging)
+			before := env.sched.Snapshot()
+			parentID := "plate"
+			unreadable := taggedJob("unreadable", map[string]string{
+				"filament.type": "PLA",
+				"printer.id":    "p9",
+				"user.tags":     "&=buddy-hold",
+			})
+			unreadable.CreatedAt = "not-a-time"
+			child := taggedJob("child", map[string]string{
+				"filament.type": "PLA",
+				"printer.id":    "p-old",
+				"user.tags":     "not-an-and-list",
+			})
+			child.ParentJobID = &parentID
+			env.api.jobs = []printago.PrintJob{
+				taggedJob("pinned", map[string]string{
+					"filament.type": "PLA",
+					"nozzle.size":   "0.4",
+					"printer.id":    "p-old",
+					"user.tags":     "&=nozzle,buddy-hold",
+				}),
+				taggedJob("parked", map[string]string{
+					"filament.type": "PLA",
+					"user.tags":     "&=buddy-hold",
+				}),
+				taggedJob("clean", map[string]string{
+					"filament.type": "PLA",
+					"user.tags":     "&=nozzle",
+				}),
+				child,
+				unreadable,
+			}
+
+			if err := env.sched.Disable(context.Background()); err != nil {
+				t.Fatalf("Disable() error = %v", err)
+			}
+
+			assertPatchIDs(t, env.api.tagPatches, "pinned", "parked", "unreadable")
+			assertTagPatches(t, env.api.tagPatches, map[string]map[string]string{
+				"pinned": {
+					"filament.type": "PLA",
+					"nozzle.size":   "0.4",
+					"user.tags":     "&=nozzle",
+				},
+				"parked": {"filament.type": "PLA"},
+				"unreadable": {
+					"filament.type": "PLA",
+				},
+			})
+			if len(env.api.updates) != 1 {
+				t.Fatalf("settings patches = %d, want 1", len(env.api.updates))
+			}
+			assertMatchingRestored(t, env.api.updates[0], tc.merging)
+			assertCallOrder(t, env.api.calls, "update-tags", "patch-settings")
+			if !env.api.stateAtPatch.Enabled || !env.api.stateAtPatch.HasMergingSnapshot {
+				t.Fatalf("state when settings were patched = %+v, want still enabled with a merging snapshot", env.api.stateAtPatch)
+			}
+			assertState(t, env.path, smartqueue.State{
+				Enabled:            false,
+				HasMergingSnapshot: false,
+				AutomaticMerging:   tc.merging,
+				PrioritizedJobIDs:  []string{"keep"},
+			})
+			assertDisabledKeepsRows(t, before, env.sched.Snapshot())
+			if env.api.runCalls != 0 {
+				t.Fatalf("RunQueue calls = %d, want 0", env.api.runCalls)
+			}
+		})
+	}
+
+	t.Run("absent snapshot stays false", func(t *testing.T) {
+		env := enabledScheduler(t, true)
+		if err := smartqueue.SaveState(env.path, smartqueue.State{
+			Enabled:            true,
+			HasMergingSnapshot: false,
+			AutomaticMerging:   true,
+			PrioritizedJobIDs:  []string{"keep"},
+		}); err != nil {
+			t.Fatal(err)
+		}
+		before := env.sched.Snapshot()
+		env.api.jobs = []printago.PrintJob{
+			taggedJob("pinned", map[string]string{"filament.type": "PLA", "printer.id": "p1"}),
+		}
+
+		if err := env.sched.Disable(context.Background()); err != nil {
+			t.Fatalf("Disable() error = %v", err)
+		}
+
+		if len(env.api.updates) != 1 {
+			t.Fatalf("settings patches = %d, want 1", len(env.api.updates))
+		}
+		assertMatchingRestored(t, env.api.updates[0], false)
+		assertState(t, env.path, smartqueue.State{
+			Enabled:            false,
+			HasMergingSnapshot: false,
+			AutomaticMerging:   true,
+			PrioritizedJobIDs:  []string{"keep"},
+		})
+		assertDisabledKeepsRows(t, before, env.sched.Snapshot())
+	})
+}
+
+func TestDisableTagOrSettingsErrorLeavesEnabledTrue(t *testing.T) {
+	t.Run("invalid user tags", func(t *testing.T) {
+		env := enabledScheduler(t, true)
+		before := env.sched.Snapshot()
+		env.api.jobs = []printago.PrintJob{
+			taggedJob("first", map[string]string{"filament.type": "PLA", "printer.id": "p1"}),
+			taggedJob("bad", map[string]string{"filament.type": "PLA", "user.tags": "not-an-and-list"}),
+			taggedJob("later", map[string]string{"filament.type": "PLA", "printer.id": "p2"}),
+		}
+
+		err := env.sched.Disable(context.Background())
+		if !errors.Is(err, smartqueue.ErrUserTags) {
+			t.Fatalf("Disable() error = %v, want ErrUserTags", err)
+		}
+
+		assertPatchIDs(t, env.api.tagPatches, "first")
+		assertTagPatches(t, env.api.tagPatches, map[string]map[string]string{
+			"first": {"filament.type": "PLA"},
+		})
+		assertStillEnabled(t, env, before)
+	})
+
+	t.Run("tag patch", func(t *testing.T) {
+		env := enabledScheduler(t, true)
+		before := env.sched.Snapshot()
+		env.api.tagErr = errors.New("tag patch")
+		env.api.jobs = []printago.PrintJob{
+			taggedJob("first", map[string]string{"filament.type": "PLA", "printer.id": "p1"}),
+			taggedJob("later", map[string]string{"filament.type": "PLA", "user.tags": "&=buddy-hold"}),
+		}
+
+		err := env.sched.Disable(context.Background())
+		if !errors.Is(err, env.api.tagErr) {
+			t.Fatalf("Disable() error = %v, want %v", err, env.api.tagErr)
+		}
+
+		assertPatchIDs(t, env.api.tagPatches, "first")
+		assertStillEnabled(t, env, before)
+	})
+
+	t.Run("job list", func(t *testing.T) {
+		env := enabledScheduler(t, true)
+		before := env.sched.Snapshot()
+		env.api.jobsErr = errors.New("jobs")
+
+		err := env.sched.Disable(context.Background())
+		if !errors.Is(err, env.api.jobsErr) {
+			t.Fatalf("Disable() error = %v, want %v", err, env.api.jobsErr)
+		}
+
+		assertStillEnabled(t, env, before)
+	})
+
+	t.Run("settings patch", func(t *testing.T) {
+		env := enabledScheduler(t, true)
+		before := env.sched.Snapshot()
+		env.api.updateErr = errors.New("patch settings")
+		env.api.jobs = []printago.PrintJob{
+			taggedJob("pinned", map[string]string{"filament.type": "PLA", "printer.id": "p1"}),
+		}
+
+		err := env.sched.Disable(context.Background())
+		if !errors.Is(err, env.api.updateErr) {
+			t.Fatalf("Disable() error = %v, want %v", err, env.api.updateErr)
+		}
+
+		assertPatchIDs(t, env.api.tagPatches, "pinned")
+		assertCallOrder(t, env.api.calls, "update-tags", "patch-settings")
+		if !env.api.stateAtPatch.Enabled {
+			t.Fatalf("state when settings were patched = %+v, want enabled true", env.api.stateAtPatch)
+		}
+		assertStillEnabled(t, env, before)
+	})
+}
+
+func enabledScheduler(t *testing.T, merging bool) *enableEnv {
+	t.Helper()
+	env := newEnableEnv(t)
+	env.api.settings.AutomaticQueueMatching = false
+	env.api.settings.PlateMerging.AutomaticMerging = merging
+	if err := env.sched.Enable(context.Background()); err != nil {
+		t.Fatalf("Enable() error = %v", err)
+	}
+	env.api.resetCalls()
+	return env
+}
+
+func taggedJob(id string, tags map[string]string) printago.PrintJob {
+	job := pendingJob(id, time.Hour)
+	job.RequiredPrinterTags = tags
+	return job
+}
+
+func assertDisabledKeepsRows(t *testing.T, before, after *smartqueue.Plan) {
+	t.Helper()
+	if after == nil || after.Enabled {
+		t.Fatalf("Snapshot() = %+v, want enabled false", after)
+	}
+	if before == nil || !maps.Equal(before.Rows, after.Rows) {
+		t.Fatalf("rows = %#v, want %#v", after, before)
+	}
+}
+
+func assertStillEnabled(t *testing.T, env *enableEnv, before *smartqueue.Plan) {
+	t.Helper()
+	if slices.Contains(env.api.calls, "patch-settings") && env.api.updateErr == nil {
+		t.Fatalf("calls = %v, want no settings patch", env.api.calls)
+	}
+	assertState(t, env.path, smartqueue.State{
+		Enabled:            true,
+		HasMergingSnapshot: true,
+		AutomaticMerging:   true,
+		PrioritizedJobIDs:  []string{"keep"},
+	})
+	snap := env.sched.Snapshot()
+	assertEnabled(t, snap)
+	if before == nil || !maps.Equal(before.Rows, snap.Rows) {
+		t.Fatalf("rows = %#v, want %#v", snap, before)
+	}
+}
+
+func assertPatchIDs(t *testing.T, got []tagPatch, ids ...string) {
+	t.Helper()
+	gotIDs := make([]string, len(got))
+	for i, patch := range got {
+		gotIDs[i] = patch.id
+	}
+	if !slices.Equal(gotIDs, ids) {
+		t.Fatalf("patched ids = %#v, want %#v", gotIDs, ids)
+	}
+}
+
+func assertMatchingRestored(t *testing.T, update printago.StoreSettingsUpdate, merging bool) {
+	t.Helper()
+	if update.AutomaticQueueMatching == nil || !*update.AutomaticQueueMatching {
+		t.Fatalf("automaticQueueMatching = %v, want true", update.AutomaticQueueMatching)
+	}
+	if update.PlateMerging == nil || update.PlateMerging.AutomaticMerging == nil || *update.PlateMerging.AutomaticMerging != merging {
+		t.Fatalf("plateMerging = %#v, want automaticMerging %v", update.PlateMerging, merging)
+	}
+}
+
 type enableEnv struct {
 	api   *enableAPI
 	sched *smartqueue.Scheduler
@@ -530,6 +786,15 @@ type enableAPI struct {
 	enabledAtGet   bool
 	enabledAtPatch bool
 	stateAtPatch   smartqueue.State
+}
+
+func (a *enableAPI) resetCalls() {
+	a.calls = nil
+	a.updates = nil
+	a.tagPatches = nil
+	a.runCalls = 0
+	a.enabledAtPatch = false
+	a.stateAtPatch = smartqueue.State{}
 }
 
 func (a *enableAPI) setOlderWins() {

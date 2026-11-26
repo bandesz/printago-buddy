@@ -2,6 +2,7 @@ package smartqueue
 
 import (
 	"context"
+	"maps"
 	"slices"
 	"sync"
 	"time"
@@ -108,9 +109,66 @@ func (s *Scheduler) Enable(ctx context.Context) error {
 	return nil
 }
 
+// Disable turns smart queue off.
+// It clears reservation tags, restores Printago matching and the saved merging
+// value, then saves enabled false. A tag or settings error leaves the switch on.
+func (s *Scheduler) Disable(ctx context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	state, err := LoadState(s.cfg.StateFile)
+	if err != nil {
+		return err
+	}
+	jobs, err := s.client.GetPrintJobs(ctx)
+	if err != nil {
+		return err
+	}
+	for _, job := range jobs {
+		if job.ParentJobID != nil && *job.ParentJobID != "" {
+			continue
+		}
+		next, clearErr := ClearTags(job.RequiredPrinterTags)
+		if clearErr != nil {
+			return clearErr
+		}
+		if maps.Equal(job.RequiredPrinterTags, next) {
+			continue
+		}
+		if patchErr := s.client.UpdatePrintJobTags(ctx, job.ID, next); patchErr != nil {
+			return patchErr
+		}
+	}
+
+	matching := true
+	merging := false
+	if state.HasMergingSnapshot {
+		merging = state.AutomaticMerging
+	}
+	if err = s.client.UpdateStoreSettings(ctx, printago.StoreSettingsUpdate{
+		AutomaticQueueMatching: &matching,
+		PlateMerging:           &printago.PlateMergingUpdate{AutomaticMerging: &merging},
+	}); err != nil {
+		return err
+	}
+
+	state.Enabled = false
+	state.HasMergingSnapshot = false
+	if err = SaveState(s.cfg.StateFile, state); err != nil {
+		return err
+	}
+	s.publishSwitch(false)
+	return nil
+}
+
 // publishEnabled reports the switch on without replacing the published rows.
 func (s *Scheduler) publishEnabled() {
-	next := Plan{Enabled: true}
+	s.publishSwitch(true)
+}
+
+// publishSwitch reports the switch without replacing the published rows.
+func (s *Scheduler) publishSwitch(enabled bool) {
+	next := Plan{Enabled: enabled}
 	if current := s.cache.Snapshot(); current != nil {
 		next.Rows = current.Rows
 		next.Err = current.Err
