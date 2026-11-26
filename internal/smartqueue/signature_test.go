@@ -260,6 +260,119 @@ func TestDispatchSignatureReadyOnly(t *testing.T) {
 	}
 }
 
+func TestAssignmentSignatureEdgeCheckFlip(t *testing.T) {
+	for _, code := range []string{
+		"material-match",
+		"slots-loaded",
+		"bed-fits",
+		"profiles-configured",
+		"routing-rules",
+		"filament-profiles",
+	} {
+		t.Run(code, func(t *testing.T) {
+			passing := sampleInput()
+			setPassed(&passing, 0, code, true)
+			failing := sampleInput()
+			setPassed(&failing, 0, code, false)
+			if smartqueue.AssignmentSignature(passing) == smartqueue.AssignmentSignature(failing) {
+				t.Fatalf("flipping %s did not change the assignment signature", code)
+			}
+		})
+	}
+}
+
+func TestAssignmentSignatureTagsMatch(t *testing.T) {
+	base := sampleInput()
+	baseAssign := smartqueue.AssignmentSignature(base)
+
+	blocking := withTagsMatch(false, []smartqueue.Comparison{
+		{Key: "printer.id", Requirement: "printer-a", Matched: false},
+		{Key: "printer.modelName", Requirement: "X1 Carbon", Matched: false},
+		{Key: "filament.type", Requirement: "PLA", Matched: false},
+	})
+	blockingAssign := smartqueue.AssignmentSignature(blocking)
+	if blockingAssign == baseAssign {
+		t.Fatal("tags-match failure with filament.type did not change the assignment signature")
+	}
+
+	otherKey := withTagsMatch(false, []smartqueue.Comparison{
+		{Key: "printer.modelName", Requirement: "X1 Carbon", Matched: false},
+	})
+	if smartqueue.AssignmentSignature(otherKey) == blockingAssign {
+		t.Fatal("a different unmatched comparison key did not change the assignment signature")
+	}
+
+	otherRequirement := withTagsMatch(false, []smartqueue.Comparison{
+		{Key: "filament.type", Requirement: "PETG", Matched: false},
+	})
+	if smartqueue.AssignmentSignature(otherRequirement) == blockingAssign {
+		t.Fatal("a different unmatched comparison requirement did not change the assignment signature")
+	}
+
+	reordered := withTagsMatch(false, []smartqueue.Comparison{
+		{Key: "filament.type", Requirement: "PLA", Matched: false},
+		{Key: "printer.id", Requirement: "printer-a", Matched: false},
+		{Key: "printer.modelName", Requirement: "X1 Carbon", Matched: false},
+	})
+	if smartqueue.AssignmentSignature(reordered) != blockingAssign {
+		t.Fatal("comparison order changed the assignment signature")
+	}
+
+	withReservation := withTagsMatch(false, []smartqueue.Comparison{
+		{Key: "buddy-hold", Requirement: "buddy-hold", Matched: false},
+		{Key: "filament.type", Requirement: "PLA", Matched: false},
+		{Key: "printer.modelName", Requirement: "X1 Carbon", Matched: false},
+		{Key: "printer.id", Requirement: "printer-b", Matched: false},
+	})
+	if smartqueue.AssignmentSignature(withReservation) != blockingAssign {
+		t.Fatal("printer.id or buddy-hold changed a blocking tags-match signature")
+	}
+
+	passedFlag := withTagsMatch(true, []smartqueue.Comparison{
+		{Key: "printer.id", Requirement: "printer-a", Matched: false},
+		{Key: "filament.type", Requirement: "PLA", Matched: false},
+		{Key: "printer.modelName", Requirement: "X1 Carbon", Matched: false},
+	})
+	if smartqueue.AssignmentSignature(passedFlag) != blockingAssign {
+		t.Fatal("tags-match Passed flag changed the assignment signature")
+	}
+
+	for _, comparisons := range [][]smartqueue.Comparison{
+		{{Key: "printer.id", Requirement: "printer-z", Matched: false}},
+		{{Key: "buddy-hold", Requirement: "buddy-hold", Matched: false}},
+		{
+			{Key: "printer.id", Requirement: "printer-z", Matched: false},
+			{Key: "buddy-hold", Requirement: "buddy-hold", Matched: false},
+		},
+		{
+			{Key: "filament.type", Requirement: "PLA", Matched: true},
+			{Key: "buddy-hold", Requirement: "buddy-hold", Matched: false},
+		},
+	} {
+		in := withTagsMatch(false, comparisons)
+		if smartqueue.AssignmentSignature(in) != baseAssign {
+			t.Errorf("tags-match comparisons %#v changed the assignment signature", comparisons)
+		}
+	}
+}
+
+func TestAssignmentSignatureIgnoresStaggeredStartAndSubscriptionSlots(t *testing.T) {
+	for _, code := range []string{"staggered-start-hold", "subscription-slots"} {
+		t.Run(code, func(t *testing.T) {
+			passing := sampleInput()
+			setPassed(&passing, 0, code, true)
+			failing := sampleInput()
+			setPassed(&failing, 0, code, false)
+			if smartqueue.AssignmentSignature(passing) != smartqueue.AssignmentSignature(failing) {
+				t.Fatalf("flipping %s changed the assignment signature", code)
+			}
+			if smartqueue.DispatchSignature(passing) != smartqueue.DispatchSignature(failing) {
+				t.Fatalf("flipping %s changed the dispatch signature", code)
+			}
+		})
+	}
+}
+
 func TestDispatchSignatureIgnoresIneligibleReady(t *testing.T) {
 	eligible := sampleInput()
 	eligibleOff := sampleInput()
@@ -333,6 +446,16 @@ func sampleInput() smartqueue.SignatureInput {
 			},
 		},
 	}
+}
+
+func withTagsMatch(passed bool, comparisons []smartqueue.Comparison) smartqueue.SignatureInput {
+	in := sampleInput()
+	in.Printers[0].Checks = append(in.Printers[0].Checks, smartqueue.Check{
+		Code:        "tags-match",
+		Passed:      passed,
+		Comparisons: comparisons,
+	})
+	return in
 }
 
 func setPassed(in *smartqueue.SignatureInput, printer int, code string, passed bool) {

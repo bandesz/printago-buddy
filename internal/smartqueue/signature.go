@@ -78,8 +78,14 @@ type digestSlot struct {
 }
 
 type digestCheck struct {
-	Code   string `json:"code"`
-	Passed bool   `json:"passed"`
+	Code      string             `json:"code"`
+	Passed    bool               `json:"passed"`
+	Unmatched []digestComparison `json:"unmatched,omitempty"`
+}
+
+type digestComparison struct {
+	Key         string `json:"key"`
+	Requirement string `json:"requirement"`
 }
 
 type digestReady struct {
@@ -159,26 +165,81 @@ func digestSlots(slots []SignatureSlot) []digestSlot {
 	return out
 }
 
-// eligibilityChecks keeps the checks that remove a printer.
-// verdictEligible is false only for those codes. ready stays out.
+// eligibilityChecks keeps checks that change which printer a job can use.
+// ready, staggered-start-hold, and subscription-slots stay out.
+// tags-match is included only for unmatched comparisons other than printer.id and buddy-hold.
 func eligibilityChecks(checks []Check) []digestCheck {
 	out := make([]digestCheck, 0, len(checks))
 	for _, check := range checks {
-		if verdictEligible(Verdict{FirstFailedCheck: check.Code}) {
+		digested, ok := digestEligibilityCheck(check)
+		if !ok {
 			continue
 		}
-		out = append(out, digestCheck{Code: check.Code, Passed: check.Passed})
+		out = append(out, digested)
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Code != out[j].Code {
 			return out[i].Code < out[j].Code
 		}
-		return !out[i].Passed && out[j].Passed
+		if out[i].Passed != out[j].Passed {
+			return !out[i].Passed && out[j].Passed
+		}
+		return digestComparisonsLess(out[i].Unmatched, out[j].Unmatched)
 	})
 	if len(out) == 0 {
 		return nil
 	}
 	return out
+}
+
+func digestEligibilityCheck(check Check) (digestCheck, bool) {
+	if nonBlockingFailure(check.Code) {
+		return digestCheck{}, false
+	}
+	if check.Code == "tags-match" {
+		unmatched := blockingComparisons(check.Comparisons)
+		if len(unmatched) == 0 {
+			return digestCheck{}, false
+		}
+		return digestCheck{Code: check.Code, Passed: false, Unmatched: unmatched}, true
+	}
+	return digestCheck{Code: check.Code, Passed: check.Passed}, true
+}
+
+func blockingComparisons(comparisons []Comparison) []digestComparison {
+	out := make([]digestComparison, 0, len(comparisons))
+	for _, cmp := range comparisons {
+		if cmp.Matched || reservationKey(cmp.Key) {
+			continue
+		}
+		out = append(out, digestComparison{Key: cmp.Key, Requirement: cmp.Requirement})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Key != out[j].Key {
+			return out[i].Key < out[j].Key
+		}
+		return out[i].Requirement < out[j].Requirement
+	})
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func digestComparisonsLess(a, b []digestComparison) bool {
+	n := len(a)
+	if len(b) < n {
+		n = len(b)
+	}
+	for i := 0; i < n; i++ {
+		if a[i].Key != b[i].Key {
+			return a[i].Key < b[i].Key
+		}
+		if a[i].Requirement != b[i].Requirement {
+			return a[i].Requirement < b[i].Requirement
+		}
+	}
+	return len(a) < len(b)
 }
 
 func readyBits(printers []SignaturePrinter) []digestReady {
