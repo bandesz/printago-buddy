@@ -3,6 +3,7 @@ package printago_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -247,6 +248,72 @@ func TestGetPrintJobs_excludesArchivedJobs(t *testing.T) {
 	}
 	if gotQuery.Get("include") != "partBuild" {
 		t.Errorf("include = %q, want partBuild", gotQuery.Get("include"))
+	}
+}
+
+// A full page is followed by the next offset. A shorter page ends the list,
+// and the result is page one followed by page two.
+func TestGetPrintJobsPages(t *testing.T) {
+	const pageSize = 200
+
+	pageOne := make([]printago.PrintJob, pageSize)
+	for i := range pageOne {
+		pageOne[i] = printago.PrintJob{ID: fmt.Sprintf("page1-%d", i)}
+	}
+	pageTwo := []printago.PrintJob{{ID: "page2-0"}}
+
+	var queries []url.Values
+	_, client := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Errorf("method = %q, want GET", r.Method)
+		}
+		if r.URL.Path != "/v1/print-jobs" {
+			t.Errorf("path = %q, want /v1/print-jobs", r.URL.Path)
+		}
+		queries = append(queries, r.URL.Query())
+		switch r.URL.Query().Get("offset") {
+		case "", "0":
+			writeJSON(t, w, pageOne)
+		case "200":
+			writeJSON(t, w, pageTwo)
+		default:
+			t.Errorf("unexpected offset %q", r.URL.Query().Get("offset"))
+			writeJSON(t, w, []printago.PrintJob{})
+		}
+	}))
+
+	got, err := client.GetPrintJobs(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(queries) != 2 {
+		t.Fatalf("got %d requests, want 2 (full page then a short page)", len(queries))
+	}
+	for i, q := range queries {
+		if q.Get("status") != "pending" {
+			t.Errorf("request %d status = %q, want pending", i, q.Get("status"))
+		}
+		if q.Get("hidden") != "false" {
+			t.Errorf("request %d hidden = %q, want false", i, q.Get("hidden"))
+		}
+		if q.Get("sort") != "queueOrder" {
+			t.Errorf("request %d sort = %q, want queueOrder", i, q.Get("sort"))
+		}
+		if q.Get("include") != "partBuild" {
+			t.Errorf("request %d include = %q, want partBuild", i, q.Get("include"))
+		}
+		if q.Get("limit") != "200" {
+			t.Errorf("request %d limit = %q, want 200", i, q.Get("limit"))
+		}
+	}
+	if queries[1].Get("offset") != "200" {
+		t.Errorf("second offset = %q, want 200", queries[1].Get("offset"))
+	}
+
+	want := append(append([]printago.PrintJob{}, pageOne...), pageTwo...)
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %d jobs, want page one then page two (%d)", len(got), len(want))
 	}
 }
 

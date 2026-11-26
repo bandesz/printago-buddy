@@ -149,16 +149,29 @@ func (c *Client) GetPartMaterialAssignments(ctx context.Context, partID string) 
 	return assignments, nil
 }
 
-// GetPrintJobs returns pending print jobs that are still visible in the
-// Printago queue, sorted by queue order. Cleared jobs stay status=pending
-// and are marked hidden, so hidden jobs are excluded. partBuild is included
-// because a SKU variant's resolved filament colors live on the build.
+// GetPrintJobs returns every pending print job that is still visible in the
+// Printago queue, sorted by queue order. Each request uses limit=200 and the
+// next request follows with offset until a page is shorter than that. Cleared
+// jobs stay status=pending and are marked hidden, so hidden jobs are excluded.
+// partBuild is included because a SKU variant's resolved filament colors live
+// on the build.
 func (c *Client) GetPrintJobs(ctx context.Context) ([]PrintJob, error) {
+	const pageSize = 200
 	var jobs []PrintJob
-	if err := c.do(ctx, http.MethodGet, "/v1/print-jobs?status=pending&hidden=false&limit=200&sort=queueOrder&include=partBuild", nil, &jobs); err != nil {
-		return nil, err
+	for offset := 0; ; offset += pageSize {
+		path := "/v1/print-jobs?status=pending&hidden=false&limit=200&sort=queueOrder&include=partBuild"
+		if offset > 0 {
+			path += fmt.Sprintf("&offset=%d", offset)
+		}
+		var page []PrintJob
+		if err := c.do(ctx, http.MethodGet, path, nil, &page); err != nil {
+			return nil, err
+		}
+		jobs = append(jobs, page...)
+		if len(page) < pageSize {
+			return jobs, nil
+		}
 	}
-	return jobs, nil
 }
 
 // CancelPrintJob cancels a single queued or in-progress print job.
