@@ -2,8 +2,10 @@ package web
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -158,6 +160,134 @@ func TestSmartQueueToggle(t *testing.T) {
 		html := renderQueue(t, srv)
 		assertSmartQueueToggle(t, html, "Smart queue: On", "off", confirmTurnOff)
 	})
+}
+
+func TestSmartQueuePost(t *testing.T) {
+	t.Run("on", func(t *testing.T) {
+		api, stub, srv := smartQueuePostFixture(t, nil)
+		rec := postSmartQueue(t, srv, "on")
+		assertSeeOther(t, rec, "/queue")
+		if stub.enables != 1 || stub.disables != 0 {
+			t.Fatalf("Enable calls = %d, Disable calls = %d, want Enable once", stub.enables, stub.disables)
+		}
+		assertNoPrintago(t, api)
+	})
+
+	t.Run("off", func(t *testing.T) {
+		api, stub, srv := smartQueuePostFixture(t, nil)
+		rec := postSmartQueue(t, srv, "off")
+		assertSeeOther(t, rec, "/queue")
+		if stub.disables != 1 || stub.enables != 0 {
+			t.Fatalf("Enable calls = %d, Disable calls = %d, want Disable once", stub.enables, stub.disables)
+		}
+		assertNoPrintago(t, api)
+	})
+
+	t.Run("invalid", func(t *testing.T) {
+		api, stub, srv := smartQueuePostFixture(t, nil)
+		rec := postSmartQueue(t, srv, "maybe")
+		assertSeeOther(t, rec, "/queue?error=invalid%20smart%20queue%20value")
+		if stub.enables != 0 || stub.disables != 0 {
+			t.Fatalf("Enable calls = %d, Disable calls = %d, want neither", stub.enables, stub.disables)
+		}
+		assertNoPrintago(t, api)
+	})
+
+	t.Run("enable error", func(t *testing.T) {
+		api, stub, srv := smartQueuePostFixture(t, errors.New("disk full"))
+		rec := postSmartQueue(t, srv, "on")
+		assertSeeOther(t, rec, "/queue?error=Smart%20queue%20update%20failed%3A%20disk%20full")
+		if stub.enables != 1 || stub.disables != 0 {
+			t.Fatalf("Enable calls = %d, Disable calls = %d, want Enable once", stub.enables, stub.disables)
+		}
+		assertNoPrintago(t, api)
+	})
+
+	t.Run("disable error", func(t *testing.T) {
+		api, stub, srv := smartQueuePostFixture(t, errors.New("tags stuck"))
+		rec := postSmartQueue(t, srv, "off")
+		assertSeeOther(t, rec, "/queue?error=Smart%20queue%20update%20failed%3A%20tags%20stuck")
+		if stub.disables != 1 || stub.enables != 0 {
+			t.Fatalf("Enable calls = %d, Disable calls = %d, want Disable once", stub.enables, stub.disables)
+		}
+		assertNoPrintago(t, api)
+	})
+
+	t.Run("nil scheduler", func(t *testing.T) {
+		api := &recordingClient{jobs: []printago.PrintJob{sharedCopy("copy-old", time.Hour)}}
+		srv, err := NewServer(api, nil, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		html := renderQueue(t, srv)
+		got := assignmentCells(t, html)
+		if len(got) != 1 || got[0] != "Calculating…" {
+			t.Fatalf("assignment cells = %#v, want Calculating…", got)
+		}
+	})
+}
+
+type stubScheduler struct {
+	enables  int
+	disables int
+	err      error
+}
+
+func (s *stubScheduler) Snapshot() *smartqueue.Plan { return nil }
+
+func (s *stubScheduler) Enable(context.Context) error {
+	s.enables++
+	return s.err
+}
+
+func (s *stubScheduler) Disable(context.Context) error {
+	s.disables++
+	return s.err
+}
+
+func smartQueuePostFixture(t *testing.T, updateErr error) (*recordingClient, *stubScheduler, *Server) {
+	t.Helper()
+	api := &recordingClient{}
+	stub := &stubScheduler{err: updateErr}
+	return api, stub, newSwitchServer(t, api, stub)
+}
+
+func assertSeeOther(t *testing.T, rec *httptest.ResponseRecorder, loc string) {
+	t.Helper()
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want 303; body:\n%s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("Location"); got != loc {
+		t.Fatalf("Location = %q, want %q", got, loc)
+	}
+}
+
+func assertNoPrintago(t *testing.T, api *recordingClient) {
+	t.Helper()
+	if len(api.calls) != 0 {
+		t.Fatalf("Printago calls = %v, want none", api.calls)
+	}
+}
+
+func newSwitchServer(t *testing.T, api printago.ClientInterface, sched queueScheduler) *Server {
+	t.Helper()
+	srv, err := NewServer(api, nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv.scheduler = sched
+	return srv
+}
+
+func postSmartQueue(t *testing.T, srv *Server, enabled string) *httptest.ResponseRecorder {
+	t.Helper()
+	form := url.Values{}
+	form.Set("enabled", enabled)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/smart-queue", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	srv.routes().ServeHTTP(rec, req)
+	return rec
 }
 
 func TestBestMatching(t *testing.T) {

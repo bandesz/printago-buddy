@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"embed"
 	"fmt"
 	"html/template"
@@ -15,10 +16,18 @@ import (
 //go:embed templates
 var templateFS embed.FS
 
+// queueScheduler is the smart queue surface the queue page reads and the switch posts to.
+// *smartqueue.Scheduler implements it.
+type queueScheduler interface {
+	Snapshot() *smartqueue.Plan
+	Enable(ctx context.Context) error
+	Disable(ctx context.Context) error
+}
+
 // Server serves the Printago Buddy web UI.
 type Server struct {
 	client    printago.ClientInterface
-	scheduler *smartqueue.Scheduler
+	scheduler queueScheduler
 	port      int
 	queueTmpl *template.Template
 }
@@ -40,27 +49,35 @@ func NewServer(client printago.ClientInterface, scheduler *smartqueue.Scheduler,
 		return nil, fmt.Errorf("parse queue template: %w", err)
 	}
 
-	return &Server{client: client, scheduler: scheduler, port: port, queueTmpl: queueTmpl}, nil
+	var stored queueScheduler
+	if scheduler != nil {
+		stored = scheduler
+	}
+	return &Server{client: client, scheduler: stored, port: port, queueTmpl: queueTmpl}, nil
 }
 
 // Start registers routes and blocks serving HTTP on the configured port.
 func (s *Server) Start() error {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/", s.handleIndex)
-	mux.HandleFunc("/queue", s.handleQueue)
-	mux.HandleFunc("/cancel-job", s.handleCancelJob)
-	mux.HandleFunc("/prioritize-job", s.handlePrioritizeJob)
-
 	addr := fmt.Sprintf(":%d", s.port)
 	slog.Info("web server started", "addr", "http://localhost"+addr)
 	srv := &http.Server{
 		Addr:         addr,
-		Handler:      mux,
+		Handler:      s.routes(),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
 	return srv.ListenAndServe()
+}
+
+func (s *Server) routes() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", s.handleIndex)
+	mux.HandleFunc("/queue", s.handleQueue)
+	mux.HandleFunc("/smart-queue", s.handleSmartQueue)
+	mux.HandleFunc("/cancel-job", s.handleCancelJob)
+	mux.HandleFunc("/prioritize-job", s.handlePrioritizeJob)
+	return mux
 }
 
 func (s *Server) render(w http.ResponseWriter, tmpl *template.Template, data any) {

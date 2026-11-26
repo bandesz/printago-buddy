@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -44,7 +45,7 @@ func (s *Server) handleQueue(w http.ResponseWriter, r *http.Request) {
 	if flash := r.URL.Query().Get("error"); flash != "" {
 		data.Err = flash
 	}
-	plan := s.scheduler.Snapshot()
+	plan := s.currentPlan()
 	data.SmartQueueOn = plan != nil && plan.Enabled
 
 	jobs, err := s.client.GetPrintJobs(ctx)
@@ -98,7 +99,7 @@ func (s *Server) handleQueue(w http.ResponseWriter, r *http.Request) {
 
 	// Fetch part material assignments for all jobs concurrently.
 	assignmentsMap := fetchAllPartAssignments(ctx, s.client, jobs)
-	plan = s.scheduler.Snapshot()
+	plan = s.currentPlan()
 	data.SmartQueueOn = plan != nil && plan.Enabled
 
 	normalEntries := make([]queueEntry, 0, len(jobs))
@@ -120,6 +121,54 @@ func (s *Server) handleQueue(w http.ResponseWriter, r *http.Request) {
 	data.NormalEntries = normalEntries
 	data.LowEntries = lowEntries
 	s.render(w, s.queueTmpl, data)
+}
+
+// currentPlan reads the cached plan. A nil scheduler is the same as a plan that has not been published yet.
+func (s *Server) currentPlan() *smartqueue.Plan {
+	if s.scheduler == nil {
+		return nil
+	}
+	return s.scheduler.Snapshot()
+}
+
+func (s *Server) handleSmartQueue(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 1024)
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+
+	enabled := r.FormValue("enabled")
+	if enabled != "on" && enabled != "off" {
+		redirectQueue(w, r, "invalid smart queue value")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	var err error
+	if enabled == "on" {
+		err = s.scheduler.Enable(ctx)
+	} else {
+		err = s.scheduler.Disable(ctx)
+	}
+	if err != nil {
+		slog.Error("web: failed to update smart queue", "error", err)
+		redirectQueue(w, r, "Smart queue update failed: "+err.Error())
+		return
+	}
+	redirectQueue(w, r, "")
+}
+
+func redirectQueue(w http.ResponseWriter, r *http.Request, errorText string) {
+	loc := "/queue"
+	if errorText != "" {
+		loc += "?error=" + strings.ReplaceAll(url.QueryEscape(errorText), "+", "%20")
+	}
+	http.Redirect(w, r, loc, http.StatusSeeOther)
 }
 
 // assignmentLabel is the assignment cell for one visible pending job.
