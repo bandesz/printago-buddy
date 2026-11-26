@@ -18,8 +18,8 @@ FROM alpine:3.24
 # CA certificates are required for outbound HTTPS calls to api.printago.io.
 RUN apk --no-cache add ca-certificates
 
-# Run as a dedicated non-root user.
-RUN addgroup -S app && adduser -S app -G app
+# Run as a dedicated non-root user. Create the state directory first so app can write it.
+RUN addgroup -S app && adduser -S app -G app && mkdir /data && chown app:app /data
 USER app
 
 COPY --from=builder /printago-buddy /printago-buddy

@@ -845,8 +845,9 @@ func newEnableEnv(t *testing.T) *enableEnv {
 	}
 	api.statePath = path
 	sched := smartqueue.NewScheduler(api, smartqueue.Config{
-		HalfLife:  30 * time.Minute,
-		StateFile: path,
+		HalfLife:     30 * time.Minute,
+		PollInterval: time.Hour,
+		StateFile:    path,
 	})
 	return &enableEnv{api: api, sched: sched, path: path}
 }
@@ -959,6 +960,7 @@ type enableAPI struct {
 	moved                []string
 	stateAtMove          smartqueue.State
 	prioritizedAtReserve []string
+	jobsSeen             chan struct{}
 }
 
 type scriptedMatch struct {
@@ -1047,6 +1049,10 @@ func (a *enableAPI) UpdatePrinterTags(context.Context, string, []string) error {
 
 func (a *enableAPI) GetPrintJobs(context.Context) ([]printago.PrintJob, error) {
 	a.calls = append(a.calls, "get-jobs")
+	if a.jobsSeen != nil {
+		close(a.jobsSeen)
+		a.jobsSeen = nil
+	}
 	if a.jobsErr != nil {
 		return nil, a.jobsErr
 	}
@@ -1164,6 +1170,76 @@ func TestStartupMissingStateFileDoesNotCallPrintago(t *testing.T) {
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatalf("state file stat err = %v, want not exist", err)
 	}
+}
+
+func TestShutdownDoesNotDisable(t *testing.T) {
+	api := &enableAPI{}
+	api.setOlderWins()
+	api.jobsSeen = make(chan struct{})
+	path := filepath.Join(t.TempDir(), "missing", "smart-queue.json")
+	sched := smartqueue.NewScheduler(api, smartqueue.Config{
+		HalfLife:     time.Hour,
+		PollInterval: time.Hour,
+		StateFile:    path,
+	})
+
+	err := cancelAfterPollStarts(t, sched, api.jobsSeen)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Run() error = %v, want context.Canceled", err)
+	}
+	assertNoJobOrSettingsPatches(t, api)
+	if _, statErr := os.Stat(path); !os.IsNotExist(statErr) {
+		t.Fatalf("state file stat err = %v, want not exist", statErr)
+	}
+}
+
+func TestRestartResumesEnabled(t *testing.T) {
+	env := newEnableEnv(t)
+	saveSchedulerState(t, env.path, smartqueue.State{
+		Enabled:            true,
+		HasMergingSnapshot: true,
+		AutomaticMerging:   true,
+	})
+
+	if err := env.sched.Poll(context.Background()); err != nil {
+		t.Fatalf("Poll() error = %v", err)
+	}
+
+	if len(env.api.updates) != 1 {
+		t.Fatalf("settings patches = %d, want 1", len(env.api.updates))
+	}
+	assertMatchingPaused(t, env.api.updates[0])
+	assertTagPatches(t, env.api.tagPatches, map[string]map[string]string{
+		"old":   {"filament.type": "PLA", "printer.id": "p1"},
+		"young": {"filament.type": "PLA", "user.tags": "&=buddy-hold"},
+	})
+	assertCallOrder(t, env.api.calls, "patch-settings", "update-tags")
+	if env.api.runCalls != 1 {
+		t.Fatalf("RunQueue calls = %d, want 1", env.api.runCalls)
+	}
+}
+
+func cancelAfterPollStarts(t *testing.T, sched *smartqueue.Scheduler, started <-chan struct{}) error {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- sched.Run(ctx)
+	}()
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("poll did not start")
+	}
+	cancel()
+	select {
+	case err := <-errCh:
+		return err
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run did not return after cancel")
+	}
+	return nil
 }
 
 func TestIncompatibleJobIsParkedWhenEnabled(t *testing.T) {

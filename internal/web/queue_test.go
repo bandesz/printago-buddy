@@ -37,9 +37,12 @@ func TestGroupQueueEntries_collapsesSameJob(t *testing.T) {
 }
 
 func TestQueueTemplate_showsCountOnGroupedRow(t *testing.T) {
-	srv, err := NewServer(nil, 0)
+	srv, err := NewServer(nil, nil, 0)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if srv.scheduler != nil {
+		t.Fatal("scheduler = non-nil, want the nil scheduler passed to NewServer")
 	}
 	red := filament("Red", "#ff0000")
 	blue := filament("Blue", "#0000ff")
@@ -66,6 +69,9 @@ func TestQueueTemplate_showsCountOnGroupedRow(t *testing.T) {
 	}
 	if strings.Contains(html, "col-order") || strings.Contains(html, ">#<") {
 		t.Fatal("queue position column should not be rendered")
+	}
+	if strings.Contains(html, "Assignment") {
+		t.Fatal("assignment column should not be rendered")
 	}
 	line := materialLine(html)
 	if !strings.Contains(line, "Red") || !strings.Contains(line, "Blue") || !strings.Contains(line, "or") {

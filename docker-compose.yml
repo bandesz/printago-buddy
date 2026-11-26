@@ -14,6 +14,8 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    volumes:
+      - smart-queue:/data
     deploy:
       resources:
         limits:
@@ -22,3 +24,6 @@ services:
         reservations:
           cpus: "0.05"
           memory: 16M
+
+volumes:
+  smart-queue:

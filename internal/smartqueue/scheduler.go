@@ -3,6 +3,7 @@ package smartqueue
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"maps"
 	"slices"
 	"sync"
@@ -11,10 +12,11 @@ import (
 	"github.com/bandesz/printago-buddy/internal/printago"
 )
 
-// Config is the scheduler's half-life and state file.
+// Config is the scheduler's half-life, poll interval, and state file.
 type Config struct {
-	HalfLife  time.Duration
-	StateFile string
+	HalfLife     time.Duration
+	PollInterval time.Duration
+	StateFile    string
 }
 
 // Scheduler turns smart queue on and publishes the plan cache.
@@ -40,6 +42,31 @@ var errMatchingTruncated = errors.New("group matching truncated")
 // settingsPending starts set so the first enabled poll pauses Printago matching.
 func NewScheduler(client printago.ClientInterface, cfg Config) *Scheduler {
 	return &Scheduler{client: client, cfg: cfg, settingsPending: true}
+}
+
+// Run polls immediately and then every cfg.PollInterval until ctx is canceled.
+// Canceling ctx stops the loop and leaves smart queue enabled.
+func (s *Scheduler) Run(ctx context.Context) error {
+	s.pollOnce(ctx)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	ticker := time.NewTicker(s.cfg.PollInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			s.pollOnce(ctx)
+		}
+	}
+}
+
+func (s *Scheduler) pollOnce(ctx context.Context) {
+	if err := s.Poll(ctx); err != nil && ctx.Err() == nil {
+		slog.Error("smart queue poll failed", "error", err)
+	}
 }
 
 // Snapshot returns the published plan. It is nil before the first publish.

@@ -13,6 +13,7 @@ It runs cron-like background jobs against the [Printago API](https://developers.
 | Job | Schedule | Description |
 |-----|----------|-------------|
 | `FilamentTaggerJob` | every minute (`* * * * *`) | Queries all printers and their loaded filaments (AMS slots and external spools), then updates each printer's tags with entries of the form `filament_<snake_case_name>` (e.g. `filament_pla_basic_magenta`). Non-filament tags are preserved. |
+| Smart queue scheduler | every `QUEUE_POLL_INTERVAL` (default `15s`) | Polls pending jobs and publishes the assignment plan. While smart queue is enabled, pauses Printago automatic matching and plate merging, writes printer reservations, and runs the queue. SIGINT and SIGTERM stop the poll and do not turn smart queue off. |
 
 ## Printago API Calls & Required Permissions
 
@@ -29,6 +30,9 @@ All requests are authenticated with `Authorization: ApiKey <key>` and scoped to 
 | `GET` | `/v1/part-material-assignments` | `part.view` | `GetPartMaterialAssignments` |
 | `PATCH` | `/v1/print-jobs/cancel` | `queue.manage` | `CancelPrintJob` |
 | `PATCH` | `/v1/print-jobs/move-to-queue-front` | `queue.override` | `PrioritizePrintJob` |
+| `PATCH` | `/v1/print-jobs/{id}` | `job.edit.all` | `UpdatePrintJobTags` |
+| `GET` | `/v1/settings/store` | `settings.view` | `GetStoreSettings` |
+| `PATCH` | `/v1/settings/store` | `settings.edit` | `UpdateStoreSettings` |
 
 ## Commands
 
@@ -66,21 +70,25 @@ The daemon is configured exclusively via environment variables:
 | `PRINTAGO_API_KEY` | yes | Printago API key (prefixed `ApiKey` internally) |
 | `PRINTAGO_STORE_ID` | yes | Printago store ID |
 | `WEB_PORT` | no | Port for the web UI (default: `8889`) |
+| `QUEUE_WEIGHT_HALF_LIFE` | no | Age-weight half-life for smart queue (default: `1h`) |
+| `QUEUE_POLL_INTERVAL` | no | Smart queue poll interval (default: `15s`) |
+| `SMART_QUEUE_STATE_FILE` | no | Smart queue state file (default: `/data/smart-queue.json`) |
 
 The process exits immediately on startup if either required variable is missing.
 
 ## Code Structure
 
-- `cmd/printago-buddy/main.go` — entry point; loads config, wraps the API client with `CachingClient`, registers cron jobs, starts the web server, blocks on `SIGINT`/`SIGTERM`, shuts down gracefully
-- `internal/config/` — loads and validates environment-variable configuration (including optional `WEB_PORT`)
+- `cmd/printago-buddy/main.go` — entry point; loads config, wraps the API client with `CachingClient`, starts the smart queue scheduler, registers cron jobs, passes the scheduler to the web server, blocks on `SIGINT`/`SIGTERM`, cancels the scheduler without turning smart queue off, and stops cron
+- `internal/config/` — loads and validates environment-variable configuration (including optional `WEB_PORT`, `QUEUE_WEIGHT_HALF_LIFE`, `QUEUE_POLL_INTERVAL`, and `SMART_QUEUE_STATE_FILE`)
+- `internal/smartqueue/` — smart queue scheduler; `Run` polls immediately and then on `QUEUE_POLL_INTERVAL`
 - `internal/printago/` — Printago REST API client and type definitions
   - `types.go` — `Printer`, `PrinterSlot`, `Material`, `MaterialVariant`, `PrintJob`, `PartMaterialAssignment` and related types
-  - `client.go` — `Client` with methods `GetPrinters`, `GetPrinterSlots`, `GetMaterials`, `GetMaterialVariants`, `UpdatePrinterTags`, `GetPrintJobs`, `GetPartMaterialAssignments`, `CancelPrintJob`, `PrioritizePrintJob`; also exports `ClientInterface` (used for dependency injection in jobs and the web server)
-  - `caching_client.go` — `CachingClient` wraps `ClientInterface`; caches materials/variants for 5 minutes and printers/slots/part-assignments for 1 minute; write and action methods (`UpdatePrinterTags`, `GetPrintJobs`, `CancelPrintJob`, `PrioritizePrintJob`) are always forwarded uncached
+  - `client.go` — `Client` with methods `GetPrinters`, `GetPrinterSlots`, `GetMaterials`, `GetMaterialVariants`, `UpdatePrinterTags`, `GetPrintJobs`, `GetPartMaterialAssignments`, `CancelPrintJob`, `PrioritizePrintJob`, `GetStoreSettings`, `UpdateStoreSettings`, `UpdatePrintJobTags`, `GroupMatching`, `MatchingTroubleshoot`, `RunQueue`; also exports `ClientInterface` (used for dependency injection in jobs, the scheduler, and the web server)
+  - `caching_client.go` — `CachingClient` wraps `ClientInterface`; caches materials/variants for 5 minutes and printers/slots/part-assignments for 1 minute; write and action methods (`UpdatePrinterTags`, `GetPrintJobs`, `CancelPrintJob`, `PrioritizePrintJob`, `GetStoreSettings`, `UpdateStoreSettings`, `UpdatePrintJobTags`, `GroupMatching`, `MatchingTroubleshoot`, `RunQueue`) are always forwarded uncached
 - `internal/jobs/` — cron job implementations
   - `filament_tagger.go` — `FilamentTaggerJob`
 - `internal/web/` — HTTP server and print queue UI
-  - `server.go` — `Server`; registers routes (`/queue`, `/cancel-job`, `/prioritize-job`) and serves on `WEB_PORT`
+  - `server.go` — `Server`; stores the smart queue scheduler, registers routes (`/queue`, `/cancel-job`, `/prioritize-job`), and serves on `WEB_PORT`
   - `handlers.go` — request handlers; fetches jobs/printers/slots/materials concurrently and renders the queue page
   - `matcher.go` — `RankPrinters`; ranks printers by filament compatibility for a given job's `PartMaterialAssignment` list
   - `templates/` — embedded HTML templates

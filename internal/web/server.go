@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/bandesz/printago-buddy/internal/printago"
+	"github.com/bandesz/printago-buddy/internal/smartqueue"
 )
 
 //go:embed templates
@@ -17,13 +18,14 @@ var templateFS embed.FS
 // Server serves the Printago Buddy web UI.
 type Server struct {
 	client    printago.ClientInterface
+	scheduler *smartqueue.Scheduler
 	port      int
 	queueTmpl *template.Template
 }
 
 // NewServer parses templates and creates a Server. Returns an error if any
-// template fails to parse.
-func NewServer(client printago.ClientInterface, port int) (*Server, error) {
+// template fails to parse. scheduler is stored for the queue page.
+func NewServer(client printago.ClientInterface, scheduler *smartqueue.Scheduler, port int) (*Server, error) {
 	base, err := template.ParseFS(templateFS, "templates/base.html")
 	if err != nil {
 		return nil, fmt.Errorf("parse base template: %w", err)
@@ -38,7 +40,7 @@ func NewServer(client printago.ClientInterface, port int) (*Server, error) {
 		return nil, fmt.Errorf("parse queue template: %w", err)
 	}
 
-	return &Server{client: client, port: port, queueTmpl: queueTmpl}, nil
+	return &Server{client: client, scheduler: scheduler, port: port, queueTmpl: queueTmpl}, nil
 }
 
 // Start registers routes and blocks serving HTTP on the configured port.
