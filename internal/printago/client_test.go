@@ -775,6 +775,35 @@ func TestGroupMatching(t *testing.T) {
 	}
 }
 
+func TestRunQueue(t *testing.T) {
+	var gotMethod, gotPath string
+	var body []byte
+	_, client := newTestServer(t, authHandler(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		var err error
+		body, err = io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})))
+
+	if err := client.RunQueue(context.Background()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if body == nil {
+		t.Fatal("POST /v1/print-jobs/queue/run was not called")
+	}
+	if gotMethod != http.MethodPost {
+		t.Errorf("method = %q, want POST", gotMethod)
+	}
+	if gotPath != "/v1/print-jobs/queue/run" {
+		t.Errorf("path = %q, want /v1/print-jobs/queue/run", gotPath)
+	}
+	assertJSON(t, body, `{"manual":true}`)
+}
+
 func TestMatchingTroubleshoot(t *testing.T) {
 	const jobID = "job-1"
 	response := `{

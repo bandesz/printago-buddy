@@ -146,6 +146,11 @@ func (c *CachingClient) MatchingTroubleshoot(ctx context.Context, printJobID str
 	return c.inner.MatchingTroubleshoot(ctx, printJobID)
 }
 
+// RunQueue delegates directly to the inner client (not cached).
+func (c *CachingClient) RunQueue(ctx context.Context) error {
+	return c.inner.RunQueue(ctx)
+}
+
 // GetMaterials returns all materials, fetching from the API only when the
 // cached result has expired.
 func (c *CachingClient) GetMaterials(ctx context.Context) ([]Material, error) {

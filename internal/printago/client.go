@@ -31,6 +31,7 @@ type ClientInterface interface {
 	UpdateStoreSettings(ctx context.Context, update StoreSettingsUpdate) error
 	GroupMatching(ctx context.Context, printJobIDs []string) (GroupMatchingResult, error)
 	MatchingTroubleshoot(ctx context.Context, printJobID string) (MatchingTroubleshootResult, error)
+	RunQueue(ctx context.Context) error
 }
 
 // Client is an HTTP client for the Printago REST API.
@@ -227,6 +228,14 @@ func (c *Client) GroupMatching(ctx context.Context, printJobIDs []string) (Group
 		return GroupMatchingResult{}, err
 	}
 	return result, nil
+}
+
+// RunQueue posts a manual queue run.
+func (c *Client) RunQueue(ctx context.Context) error {
+	body := struct {
+		Manual bool `json:"manual"`
+	}{Manual: true}
+	return c.do(ctx, http.MethodPost, "/v1/print-jobs/queue/run", body, nil)
 }
 
 // MatchingTroubleshoot returns matching checks for one print job.

@@ -25,6 +25,7 @@ type stubClient struct {
 	groupMatching             printago.GroupMatchingResult
 	matchingTroubleshootCalls []string
 	matchingTroubleshoot      printago.MatchingTroubleshootResult
+	runQueueCalls             int
 
 	printers         []printago.Printer
 	printerSlots     []printago.PrinterSlot
@@ -94,6 +95,11 @@ func (s *stubClient) GroupMatching(_ context.Context, printJobIDs []string) (pri
 func (s *stubClient) MatchingTroubleshoot(_ context.Context, printJobID string) (printago.MatchingTroubleshootResult, error) {
 	s.matchingTroubleshootCalls = append(s.matchingTroubleshootCalls, printJobID)
 	return s.matchingTroubleshoot, nil
+}
+
+func (s *stubClient) RunQueue(context.Context) error {
+	s.runQueueCalls++
+	return nil
 }
 
 // ---- GetPrinters ----
@@ -468,6 +474,22 @@ func TestMatchingTroubleshoot_CachingClientForwardsEveryCall(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got1, want) || !reflect.DeepEqual(got2, want) {
 		t.Errorf("got %+v and %+v, want %+v", got1, got2, want)
+	}
+}
+
+func TestRunQueue_CachingClientForwardsEveryCall(t *testing.T) {
+	stub := &stubClient{}
+	c := printago.NewCachingClientWithTTL(stub, time.Minute)
+
+	if err := c.RunQueue(context.Background()); err != nil {
+		t.Fatalf("first call: unexpected error: %v", err)
+	}
+	if err := c.RunQueue(context.Background()); err != nil {
+		t.Fatalf("second call: unexpected error: %v", err)
+	}
+
+	if stub.runQueueCalls != 2 {
+		t.Errorf("underlying client called %d times, want 2", stub.runQueueCalls)
 	}
 }
 
