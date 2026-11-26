@@ -25,6 +25,8 @@ Cell text and switch position follow `user-flows.md`.
 
 `dispatchPending` means the next poll calls queue run even when both signatures match.
 
+`settingsPending` means the next poll retries the turn-on settings PATCH (`automaticQueueMatching` false and `automaticMerging` false) even when both signatures match. It is set when the state file is saved with `enabled` true, including startup when the file is already enabled, and it clears only after that PATCH succeeds. A pure signature skip does not run while it is set.
+
 A successful apply clears `applyPending`. A successful queue run clears `dispatchPending`. Skipping queue run because no assigned printer is ready also clears `dispatchPending`.
 
 Turn-off does not run half-way into `enabled: false`. The flag flips only after tag cleanup and the settings PATCH both succeed.

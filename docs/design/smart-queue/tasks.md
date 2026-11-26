@@ -5,10 +5,13 @@ Batches run in order. Tasks inside a batch run in order. `user-flows.md` wins if
 Domain skills: none.
 
 ## Batch 1: Matching core
+**Status:** in progress
+
 
 No Printago calls. No web UI.
 
 ### Task 1.1: Age weight
+**Status:** in progress
 - Files: Create `internal/smartqueue/weight.go`, `internal/smartqueue/weight_test.go`
 - TDD: yes
 - UI flow: N/A
@@ -23,6 +26,7 @@ No Printago calls. No web UI.
 - Out of scope: Matching, lanes, prioritize
 
 ### Task 1.2: Maximum-weight assignment
+**Status:** pending
 - Files: Create `internal/smartqueue/matching.go`, `internal/smartqueue/matching_test.go`
 - TDD: yes
 - UI flow: N/A
@@ -38,6 +42,7 @@ No Printago calls. No web UI.
 - Out of scope: Tag strings, Printago verdicts
 
 ### Task 1.3: Reservation tag edits
+**Status:** pending
 - Files: Create `internal/smartqueue/tags.go`, `internal/smartqueue/tags_test.go`
 - TDD: yes
 - UI flow: N/A
@@ -54,6 +59,7 @@ No Printago calls. No web UI.
 - Out of scope: HTTP PATCH
 
 ### Task 1.4: Edges from matcher verdicts
+**Status:** pending
 - Files: Create `internal/smartqueue/edges.go`, `internal/smartqueue/edges_test.go`
 - TDD: yes
 - UI flow: N/A
@@ -71,6 +77,7 @@ No Printago calls. No web UI.
 - Out of scope: HTTP, group truncation
 
 ### Task 1.5: Change signature
+**Status:** pending
 - Files: Create `internal/smartqueue/signature.go`, `internal/smartqueue/signature_test.go`
 - TDD: yes
 - UI flow: N/A
@@ -84,8 +91,11 @@ No Printago calls. No web UI.
 - Out of scope: The poll loop
 
 ## Batch 2: Printago client
+**Status:** pending
+
 
 ### Task 2.1: List every visible pending job
+**Status:** pending
 - Files: Modify `internal/printago/client.go`, `internal/printago/client_test.go`
 - TDD: yes
 - UI flow: N/A
@@ -98,6 +108,7 @@ No Printago calls. No web UI.
 - Out of scope: New endpoints
 
 ### Task 2.2: Store settings get and patch
+**Status:** pending
 - Files: Modify `internal/printago/types.go`, `internal/printago/client.go`, `internal/printago/client_test.go`, `internal/printago/caching_client.go`, `internal/printago/caching_client_test.go`, `internal/jobs/filament_tagger_test.go`
 - TDD: yes
 - UI flow: N/A
@@ -110,6 +121,7 @@ No Printago calls. No web UI.
 - Out of scope: The enable sequence
 
 ### Task 2.3: Patch job tags
+**Status:** pending
 - Files: Modify `internal/printago/client.go`, `internal/printago/client_test.go`, `internal/printago/caching_client.go`, `internal/printago/types.go`, and the two test doubles
 - TDD: yes
 - UI flow: N/A
@@ -117,10 +129,12 @@ No Printago calls. No web UI.
 - Acceptance:
   - `UpdatePrintJobTags` `PATCH /v1/print-jobs/{id}` sends JSON `{"requiredPrinterTags": ...}` and no other job fields
   - `PrintJob` decodes `parentJobId` and `groupId`
+  - `RequiredPrinterTags` decodes every string key, including `printer.id`, `user.tags`, `printer.nozzleDiameter`, `printer.modelName`, and `filament.type`. Absent keys stay absent
   - `CachingClient` forwards every call
 - Out of scope: Building the tag object
 
 ### Task 2.4: Group matching
+**Status:** pending
 - Files: Modify `internal/printago/client.go`, `internal/printago/types.go`, `internal/printago/client_test.go`, `internal/printago/caching_client.go`, and the two test doubles
 - TDD: yes
 - UI flow: N/A
@@ -132,6 +146,7 @@ No Printago calls. No web UI.
 - Out of scope: The truncation retry loop
 
 ### Task 2.5: Matching troubleshoot
+**Status:** pending
 - Files: Modify `internal/printago/client.go`, `internal/printago/types.go`, `internal/printago/client_test.go`, `internal/printago/caching_client.go`, and the two test doubles
 - TDD: yes
 - UI flow: N/A
@@ -142,6 +157,7 @@ No Printago calls. No web UI.
 - Out of scope: Deciding edges
 
 ### Task 2.6: Manual queue run
+**Status:** pending
 - Files: Modify `internal/printago/client.go`, `internal/printago/client_test.go`, `internal/printago/caching_client.go`, and the two test doubles
 - TDD: yes
 - UI flow: N/A
@@ -152,8 +168,11 @@ No Printago calls. No web UI.
 - Out of scope: Deciding when to call it
 
 ## Batch 3: Scheduler
+**Status:** pending
+
 
 ### Task 3.1: Configuration
+**Status:** pending
 - Files: Modify `internal/config/config.go`, `internal/config/config_test.go`, `.env.example`
 - TDD: yes
 - UI flow: N/A
@@ -167,6 +186,7 @@ No Printago calls. No web UI.
 - Out of scope: Creating the directory
 
 ### Task 3.2: State file
+**Status:** pending
 - Files: Create `internal/smartqueue/state.go`, `internal/smartqueue/state_test.go`
 - TDD: yes
 - UI flow: N/A
@@ -178,6 +198,7 @@ No Printago calls. No web UI.
 - Out of scope: Printago
 
 ### Task 3.3: Build and publish a plan
+**Status:** pending
 - Files: Create `internal/smartqueue/plan.go`, `internal/smartqueue/plan_test.go`
 - TDD: yes
 - UI flow: Flow 6, Flow 12
@@ -193,6 +214,7 @@ No Printago calls. No web UI.
 - Out of scope: HTTP and tag PATCH
 
 ### Task 3.4: Reservation diff
+**Status:** pending
 - Files: Create `internal/smartqueue/reserve.go`, `internal/smartqueue/reserve_test.go`
 - TDD: yes
 - UI flow: Flow 6, Flow 7
@@ -207,6 +229,7 @@ No Printago calls. No web UI.
 - Out of scope: Persisting the plan
 
 ### Task 3.5: Turn on
+**Status:** pending
 - Files: Create `internal/smartqueue/scheduler.go`, `internal/smartqueue/scheduler_test.go`
 - TDD: yes
 - UI flow: Flow 3
@@ -218,9 +241,11 @@ No Printago calls. No web UI.
   - A `RunQueue` error after a successful diff still publishes the plan, sets `Err`, and returns that error
   - A state-file error before the flag is saved returns the error, leaves `enabled` false, and does not PATCH settings
   - A settings PATCH error after the flag is saved leaves `enabled` true and returns the error
+  - After the state file is saved, `Snapshot` reports `Enabled` true even when a later settings PATCH, reservation write, or `RunQueue` fails
 - Out of scope: The HTTP form
 
 ### Task 3.6: Turn off
+**Status:** pending
 - Files: Modify `internal/smartqueue/scheduler.go`, `internal/smartqueue/scheduler_test.go`
 - TDD: yes
 - UI flow: Flow 9
@@ -228,21 +253,24 @@ No Printago calls. No web UI.
 - Acceptance:
   - Disable removes `buddy-hold` and `printer.id` from managed pending jobs, patches `automaticQueueMatching` true, restores the saved `automaticMerging`, then saves `enabled` false and `hasMergingSnapshot` false
   - Prioritize ids remain
-  - A tag or settings error leaves `enabled` true and does not write `enabled` false
+  - A tag or settings error leaves `enabled` true and does not write `enabled` false. `Snapshot` reports `Enabled` true
+  - On success, `Snapshot` reports `Enabled` false
   - Merged children are not patched
 - Out of scope: The HTTP form
 
 ### Task 3.7: Poll
+**Status:** pending
 - Files: Modify `internal/smartqueue/scheduler.go`, `internal/smartqueue/scheduler_test.go`
 - TDD: yes
 - UI flow: Flow 1, Flow 4, Flow 5, Flow 7, Flow 8
-- Verify: `go test ./internal/smartqueue/ -count=1 -run 'TestPoll|TestStartup|TestReady'`
+- Verify: `go test ./internal/smartqueue/ -count=1 -run 'TestPoll|TestStartup|TestReady|TestIncompatible|TestApplyFailure|TestNewJob'`
 - Acceptance:
   - The poll loads pending jobs with `GetPrintJobs`
   - `TestStartupMissingStateFileDoesNotCallPrintago`: a missing file polls reads and group matching, publishes a plan, and does not PATCH settings or jobs
   - `TestIncompatibleJobIsParkedWhenEnabled`: a job with no edge is published as `incompatible` and, with the switch on, is patched to `buddy-hold` with no `printer.id`
   - An unchanged assignment and dispatch signature does no Printago work
-  - A new job id recomputes the published plan. With the switch off, jobs are not patched
+  - `TestNewJobChangesAssignment`: a new job id recomputes the published plan. With the switch off, jobs are not patched
+  - When `enabled` is true and the turn-on settings PATCH has not succeeded since the flag was saved, the poll PATCHes `automaticQueueMatching` false and `automaticMerging` false before reservations, even if both signatures match
   - `TestReadyChangeRunsQueueWithoutRecompute`: with the switch on, a ready-only change calls `RunQueue` and does not change pairs
   - A fetch, matching, or troubleshoot error keeps the published plan and sets `Err`
   - `TestApplyFailureKeepsPublishedPlan`: a failed reservation PATCH keeps the previous published rows, sets `Err`, and the next poll retries the diff when the signatures match
@@ -253,6 +281,7 @@ No Printago calls. No web UI.
 - Out of scope: Signal handling
 
 ### Task 3.8: Prioritize
+**Status:** pending
 - Files: Modify `internal/smartqueue/scheduler.go`, `internal/smartqueue/scheduler_test.go`
 - TDD: yes
 - UI flow: Flow 11
@@ -261,6 +290,7 @@ No Printago calls. No web UI.
   - `TestPrioritizeBeatsOlderNormalJob`: a younger prioritized normal job takes the contested printer from an older normal job that is not prioritized
   - `TestPrioritizeLowDoesNotBeatNormal`: a prioritized low job does not take a printer a normal job can use
   - The mark is saved before reservations are written
+  - When reservation writes fail after the mark is saved, the previous published rows stay, `Err` is set, and move-to-front is not called
   - With the switch on, move-to-front is not called
   - `TestPrioritizeWhileOffMovesToFrontOnce`: with the switch off, the first click calls move-to-front once and does not PATCH job tags. The second click does not call move-to-front and does not change the plan
   - A state-file error does not call move-to-front and does not add the id
@@ -268,38 +298,44 @@ No Printago calls. No web UI.
 - Out of scope: The HTTP redirect
 
 ### Task 3.9: Process wiring
-- Files: Modify `cmd/printago-buddy/main.go`, `Dockerfile`, `docker-compose.yml`, `AGENTS.md`, `internal/smartqueue/scheduler_test.go`
+**Status:** pending
+- Files: Modify `cmd/printago-buddy/main.go`, `Dockerfile`, `docker-compose.yml`, `AGENTS.md`, `internal/smartqueue/scheduler_test.go`, `internal/web/server.go`, `internal/web/queue_test.go`
 - TDD: no
 - UI flow: Flow 10
-- Verify: `go test ./internal/smartqueue/ -count=1 -run 'TestShutdown|TestResume'`
+- Verify: `go test ./internal/smartqueue/ ./internal/web/ -count=1 -run 'TestShutdown|TestResume|TestGroupQueue|TestQueueTemplate'`
 - Acceptance:
   - `TestShutdownDoesNotDisable`: canceling the poll context does not PATCH settings or jobs
   - `TestRestartResumesEnabled`: a state file with `enabled` true patches matching off and merging off, then applies reservations
-  - `main` starts the scheduler and passes it to the web server
+  - `main` starts the scheduler and passes it to the web server. `NewServer` accepts that scheduler. Existing queue template tests still pass. The assignment column is not rendered yet
   - The image creates `/data` owned by `app` before the process drops to `app`
   - Compose mounts a named volume at `/data`
   - `AGENTS.md` lists `settings.edit`, `job.edit.all`, the three environment variables, and the scheduler
 - Out of scope: Changing the filament tagger schedule
 
 ## Batch 4: Queue page
+**Status:** pending
+
 
 UI and the tests below ship in this batch.
 
 ### Task 4.1: Assignment column from the cache
-- Files: Modify `internal/web/handlers.go`, `internal/web/server.go`, `internal/web/templates/queue.html`, create `internal/web/queue_page_test.go`
+**Status:** pending
+- Files: Modify `internal/web/handlers.go`, `internal/web/server.go`, `internal/web/templates/queue.html`, `internal/web/queue_test.go`, create `internal/web/queue_page_test.go`
 - TDD: no (UI flow test)
 - UI flow: Flow 2, Flow 8, Flow 12
-- Verify: `go test ./internal/web/ -count=1 -run 'TestQueuePage'`
+- Verify: `go test ./internal/web/ -count=1 -run 'TestQueuePage|TestEmptyQueuePage'`
 - Acceptance:
   - `TestQueuePageDoesNotMatchOnReload`: rendering calls `Snapshot` and does not call group matching, troubleshoot, settings, tag update, or queue run
   - The column header is `Assignment`
   - Status `assigned` renders the printer name, `waiting` renders `Waiting for a printer`, `incompatible` renders `No compatible printer`, `merged` renders `Part of a merged plate`, `unreadable` renders `Unreadable job age`
   - A nil snapshot renders `Calculating…` on every job row
-  - No pending jobs renders `No pending print jobs.`
+  - `TestEmptyQueuePage`: no pending jobs renders `No pending print jobs.`
+  - Each visible pending job is its own table row, including copies that share a part, label, and colors. The xN badge is absent
   - While `Enabled` is false, the best-matching printers column is present
 - Out of scope: The switch POST
 
 ### Task 4.2: Switch control and best-matching column
+**Status:** pending
 - Files: Modify `internal/web/templates/queue.html`, `internal/web/queue_page_test.go`
 - TDD: no (UI flow test)
 - UI flow: Flow 1, Flow 3, Flow 9
@@ -312,6 +348,7 @@ UI and the tests below ship in this batch.
 - Out of scope: Enable's Printago sequence, covered by task 3.5
 
 ### Task 4.3: Switch POST
+**Status:** pending
 - Files: Modify `internal/web/server.go`, `internal/web/handlers.go`, `internal/web/queue_page_test.go`
 - TDD: no (UI flow test)
 - UI flow: Flow 3, Flow 9
@@ -324,6 +361,7 @@ UI and the tests below ship in this batch.
 - Out of scope: Banner rendering of a background poll error
 
 ### Task 4.4: Prioritize POST
+**Status:** pending
 - Files: Modify `internal/web/handlers.go`, `internal/web/queue_page_test.go`
 - TDD: no (UI flow test)
 - UI flow: Flow 11
@@ -337,6 +375,7 @@ UI and the tests below ship in this batch.
 - Out of scope: Lane weights, covered by task 3.8
 
 ### Task 4.5: Error banner
+**Status:** pending
 - Files: Modify `internal/web/handlers.go`, `internal/web/templates/queue.html`, `internal/web/queue_page_test.go`
 - TDD: no (UI flow test)
 - UI flow: Flow 1, Flow 7
@@ -349,6 +388,7 @@ UI and the tests below ship in this batch.
 - Out of scope: New banner styles
 
 ### Task 4.6: Batch gate
+**Status:** pending
 - Files: none
 - TDD: no
 - UI flow: N/A

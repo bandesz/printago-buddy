@@ -8,7 +8,7 @@ A later implementation pass that can reach a running daemon also loads `/queue` 
 |---|---|
 | Flow 1 | `TestStartupMissingStateFileDoesNotCallPrintago` |
 | Flow 2 | `TestQueuePageDoesNotMatchOnReload` |
-| Flow 3 | `TestEnableSmartQueue`, `TestEnableConfirmCopy` |
+| Flow 3 | `TestEnable` (pause, reserve, run), `TestSmartQueueToggle` (control label and confirm copy) |
 | Flow 4 | `TestReadyChangeRunsQueueWithoutRecompute` |
 | Flow 5 | `TestNewJobChangesAssignment` |
 | Flow 6 | `TestIncompatibleJobIsParkedWhenEnabled` |

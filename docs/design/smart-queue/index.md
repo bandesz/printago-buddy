@@ -4,6 +4,9 @@ Buddy chooses the next job for each eligible printer by maximum-weight matching,
 
 `user-flows.md` is the behaviour contract. If another file disagrees with it, this index and `user-flows.md` win, then the other file is updated to match.
 
+## Implementation status
+**Status:** in progress — Batch 1 of 4
+
 ## Read this first
 
 | File | What it decides |
@@ -50,6 +53,9 @@ Buddy instead weights each pending job by age, `2^(age / half-life)`, matches no
 - Prioritize does not move a job between normal and low.
 - There is no confirm step on Prioritize. There is a confirm step on both switch directions.
 - The queue page keeps its 10 second reload. That reload only reads the cache.
+- A priority other than `1000` is a normal job. `1000` is low.
+- The queue page lists one row per visible pending job. Copies that share a part, label, and colors are separate rows, each with its own assignment. The xN collapse is not rendered.
+- `Plan.Enabled` matches the state file as soon as that file is saved. Assignment rows publish only after a finished recompute, and, when the switch is on, only after every reservation PATCH for that plan has succeeded.
 - Edge weight depends only on the job. All weights are positive.
 - Weights inside one stage are divided by that stage's maximum before the solver. The winning set of edges stays the same.
 

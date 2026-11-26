@@ -35,7 +35,9 @@ Plan
 
 `Err` empty means the last poll succeeded. The column maps status to the cell text in `user-flows.md`. A nil plan means `Calculating…`.
 
-The published plan changes only when a recompute finishes and, if the switch is on, every reservation PATCH for that plan has succeeded. A failed queue run still publishes the plan, because the tags already match it, and records `Err`.
+`Plan.Enabled` follows the state file as soon as that file is saved. After enable saves `enabled: true`, `Snapshot` reports enabled even when a later settings PATCH, reservation write, or queue run fails. After disable saves `enabled: false`, `Snapshot` reports disabled. A failed disable does not save that flag, so `Snapshot` stays enabled.
+
+The published rows change only when a recompute finishes and, if the switch is on, every reservation PATCH for that plan has succeeded. A failed queue run still publishes the rows, because the tags already match them, and records `Err`.
 
 ## Weight
 
@@ -65,13 +67,16 @@ A printer is eligible when group matching reports it and its first failed check 
 An edge exists when the printer is eligible and any of these is true:
 
 - `matched` is true
-- `compatible` is true
-- `firstFailedCheck` is `ready`, `staggered-start-hold`, or `subscription-slots`
-- `firstFailedCheck` is `tags-match`, and troubleshoot shows every other check passing except `ready`, `staggered-start-hold`, and `subscription-slots`, and the only failing tag comparisons are `printer.id` or the tag `buddy-hold`
+- `firstFailedCheck` is empty, `ready`, `staggered-start-hold`, or `subscription-slots`
+- `firstFailedCheck` is `tags-match`, and troubleshoot shows every other check passing except `ready`, `staggered-start-hold`, and `subscription-slots`, and every failing tag comparison is a reservation comparison
 
-`profiles-configured`, `slots-loaded`, `routing-rules`, `material-match`, `filament-profiles`, and `bed-fits` make the printer eligible and create no edge.
+`compatible` true does not create an edge by itself. `profiles-configured`, `slots-loaded`, `routing-rules`, `material-match`, `filament-profiles`, and `bed-fits` make the printer eligible and create no edge, even when `compatible` is true.
+
+A troubleshoot check has `code`, `passed`, and `comparisons`. Each comparison has `key`, `requirement`, and `matched`. A failing comparison is a reservation comparison when `key` is `printer.id` or `buddy-hold`. Any other failing comparison blocks the edge.
 
 Group matching is called with `use: "direct"` so routing preferences are not edges. Routing requirements still appear as `routing-rules`.
+
+The decoded group-matching value has `truncated` and a list of groups. Each group has `memberPrintJobIds`, `representativePrintJobId`, and one verdict per printer with `printerId`, `matched`, `compatible`, and `firstFailedCheck`. `firstFailedCheck` is empty when that printer did not fail a check.
 
 One troubleshoot call is made per group whose representative has any `tags-match` failure. Every member of the group gets those edges. Each member keeps its own weight, lane, and prioritize mark.
 
