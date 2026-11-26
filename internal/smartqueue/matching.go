@@ -56,14 +56,15 @@ func laneIndex(job Job, prioritized map[string]struct{}) int {
 }
 
 // assignStage matches jobs to printers that are not already used.
-// Edge weights are scaled by this stage's maximum before solving.
+// Non-finite weights are replaced with one finite stand-in before scaling,
+// then edge weights are scaled by this stage's maximum before solving.
 func assignStage(jobs []Job, edges []Edge, used map[string]bool, out map[string]string) {
 	if len(jobs) == 0 {
 		return
 	}
 	raw := make([]float64, len(jobs))
 	for i, job := range jobs {
-		raw[i] = job.Weight
+		raw[i] = finiteAgeStandIn(job.Weight)
 	}
 	scaled := ScaleWeights(raw)
 	weightOf := make(map[string]float64, len(jobs))

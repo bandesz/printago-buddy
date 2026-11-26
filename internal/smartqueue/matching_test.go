@@ -1,7 +1,9 @@
 package smartqueue_test
 
 import (
+	"math"
 	"testing"
+	"time"
 
 	"github.com/bandesz/printago-buddy/internal/smartqueue"
 )
@@ -24,9 +26,43 @@ func TestHeavyJobDoesNotTakeTheOnlyPrinterOfALighterJob(t *testing.T) {
 	}
 }
 
+func TestHeavyJobOverflowingAgeDoesNotTakeTheOnlyPrinterOfALighterJob(t *testing.T) {
+	heavy := overflowingAgeWeight(t)
+	jobs := []smartqueue.Job{
+		{ID: "H", Priority: 100, Weight: heavy},
+		{ID: "L", Priority: 100, Weight: 1},
+	}
+	edges := []smartqueue.Edge{
+		{JobID: "H", PrinterID: "A"},
+		{JobID: "H", PrinterID: "B"},
+		{JobID: "L", PrinterID: "A"},
+	}
+
+	got := smartqueue.Assign(jobs, edges, nil)
+
+	if got["L"] != "A" || got["H"] != "B" {
+		t.Errorf("assignment = %v, want L on A and H on B", got)
+	}
+}
+
 func TestLaneAssignsFreePrinterWithPositiveWeight(t *testing.T) {
 	jobs := []smartqueue.Job{
 		{ID: "J", Priority: 100, Weight: 1},
+	}
+	edges := []smartqueue.Edge{
+		{JobID: "J", PrinterID: "A"},
+	}
+
+	got := smartqueue.Assign(jobs, edges, nil)
+
+	if got["J"] != "A" {
+		t.Errorf("assignment = %v, want J→A", got)
+	}
+}
+
+func TestLaneOverflowingAgeWeightGetsFreePrinter(t *testing.T) {
+	jobs := []smartqueue.Job{
+		{ID: "J", Priority: 100, Weight: overflowingAgeWeight(t)},
 	}
 	edges := []smartqueue.Edge{
 		{JobID: "J", PrinterID: "A"},
@@ -61,6 +97,26 @@ func TestLaneJobWithNoEdgeStaysUnmatched(t *testing.T) {
 func TestLaneNormalJobKeepsPrinterALowJobCanUse(t *testing.T) {
 	jobs := []smartqueue.Job{
 		{ID: "normal", Priority: 100, Weight: 1},
+		{ID: "low", Priority: 1000, Weight: 8},
+	}
+	edges := []smartqueue.Edge{
+		{JobID: "normal", PrinterID: "A"},
+		{JobID: "low", PrinterID: "A"},
+	}
+
+	got := smartqueue.Assign(jobs, edges, nil)
+
+	if got["normal"] != "A" {
+		t.Errorf("normal assigned %q, want A", got["normal"])
+	}
+	if _, ok := got["low"]; ok {
+		t.Errorf("low assigned %q, want unmatched", got["low"])
+	}
+}
+
+func TestLaneOverflowingNormalJobDoesNotLeaveSharedPrinterToLowJob(t *testing.T) {
+	jobs := []smartqueue.Job{
+		{ID: "normal", Priority: 100, Weight: overflowingAgeWeight(t)},
 		{ID: "low", Priority: 1000, Weight: 8},
 	}
 	edges := []smartqueue.Edge{
@@ -180,4 +236,13 @@ func TestPrioritizeHeavierNormalJobGetsContestedPrinter(t *testing.T) {
 	if _, ok := got["light"]; ok {
 		t.Errorf("light assigned %q, want unmatched", got["light"])
 	}
+}
+
+func overflowingAgeWeight(t *testing.T) float64 {
+	t.Helper()
+	weight := smartqueue.Weight(1024*time.Hour, time.Hour)
+	if !math.IsInf(weight, 1) {
+		t.Fatalf("Weight(1024 half-lives) = %v, want +Inf", weight)
+	}
+	return weight
 }

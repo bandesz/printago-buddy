@@ -13,6 +13,19 @@ func Weight(age, halfLife time.Duration) float64 {
 	return math.Pow(2, float64(age)/float64(halfLife))
 }
 
+// overflowAgeStandIn is finite and strictly above every finite Weight result.
+// math.Pow(2, x) overflows to +Inf before it can reach MaxFloat64.
+const overflowAgeStandIn = math.MaxFloat64
+
+// finiteAgeStandIn replaces every non-finite weight with overflowAgeStandIn.
+// All overflowing ages therefore compare equal, and heavier than any finite age.
+func finiteAgeStandIn(weight float64) float64 {
+	if math.IsNaN(weight) || math.IsInf(weight, 0) {
+		return overflowAgeStandIn
+	}
+	return weight
+}
+
 // ScaleWeights divides each weight by the maximum so the largest becomes 1.
 func ScaleWeights(weights []float64) []float64 {
 	if len(weights) == 0 {
