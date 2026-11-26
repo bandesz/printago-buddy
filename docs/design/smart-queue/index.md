@@ -5,7 +5,7 @@ Buddy chooses the next job for each eligible printer by maximum-weight matching,
 `user-flows.md` is the behaviour contract. If another file disagrees with it, this index and `user-flows.md` win, then the other file is updated to match.
 
 ## Implementation status
-**Status:** in progress — Batch 1 of 4
+**Status:** in progress — Batch 1 of 4, task 1.1 done
 
 ## Read this first
 

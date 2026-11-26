@@ -11,7 +11,7 @@ Domain skills: none.
 No Printago calls. No web UI.
 
 ### Task 1.1: Age weight
-**Status:** in progress
+**Status:** done — `5dbebc9`
 - Files: Create `internal/smartqueue/weight.go`, `internal/smartqueue/weight_test.go`
 - TDD: yes
 - UI flow: N/A
@@ -26,7 +26,7 @@ No Printago calls. No web UI.
 - Out of scope: Matching, lanes, prioritize
 
 ### Task 1.2: Maximum-weight assignment
-**Status:** pending
+**Status:** in progress
 - Files: Create `internal/smartqueue/matching.go`, `internal/smartqueue/matching_test.go`
 - TDD: yes
 - UI flow: N/A
