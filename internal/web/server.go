@@ -16,12 +16,13 @@ import (
 //go:embed templates
 var templateFS embed.FS
 
-// queueScheduler is the smart queue surface the queue page reads and the switch posts to.
+// queueScheduler is the smart queue surface the queue page reads and the switch and Prioritize post to.
 // *smartqueue.Scheduler implements it.
 type queueScheduler interface {
 	Snapshot() *smartqueue.Plan
 	Enable(ctx context.Context) error
 	Disable(ctx context.Context) error
+	Prioritize(ctx context.Context, jobID string) error
 }
 
 // Server serves the Printago Buddy web UI.

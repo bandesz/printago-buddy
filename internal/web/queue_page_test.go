@@ -227,10 +227,45 @@ func TestSmartQueuePost(t *testing.T) {
 	})
 }
 
+func TestPrioritizePost(t *testing.T) {
+	const jobID = "abcdef0123456789abcdef01"
+
+	t.Run("valid", func(t *testing.T) {
+		api, stub, srv := smartQueuePostFixture(t, nil)
+		rec := postPrioritize(t, srv, jobID)
+		assertSeeOther(t, rec, "/queue")
+		if len(stub.prioritized) != 1 || stub.prioritized[0] != jobID {
+			t.Fatalf("Prioritize calls = %v, want [%s]", stub.prioritized, jobID)
+		}
+		assertNoPrintago(t, api)
+	})
+
+	t.Run("error", func(t *testing.T) {
+		api, stub, srv := smartQueuePostFixture(t, errors.New("disk full"))
+		rec := postPrioritize(t, srv, jobID)
+		assertSeeOther(t, rec, "/queue?error=Failed%20to%20prioritize%20job%3A%20disk%20full")
+		if len(stub.prioritized) != 1 || stub.prioritized[0] != jobID {
+			t.Fatalf("Prioritize calls = %v, want [%s]", stub.prioritized, jobID)
+		}
+		assertNoPrintago(t, api)
+	})
+
+	t.Run("invalid", func(t *testing.T) {
+		api, stub, srv := smartQueuePostFixture(t, nil)
+		rec := postPrioritize(t, srv, "nope")
+		assertSeeOther(t, rec, "/queue?error=invalid+job+id")
+		if len(stub.prioritized) != 0 {
+			t.Fatalf("Prioritize calls = %v, want none", stub.prioritized)
+		}
+		assertNoPrintago(t, api)
+	})
+}
+
 type stubScheduler struct {
-	enables  int
-	disables int
-	err      error
+	enables     int
+	disables    int
+	prioritized []string
+	err         error
 }
 
 func (s *stubScheduler) Snapshot() *smartqueue.Plan { return nil }
@@ -242,6 +277,11 @@ func (s *stubScheduler) Enable(context.Context) error {
 
 func (s *stubScheduler) Disable(context.Context) error {
 	s.disables++
+	return s.err
+}
+
+func (s *stubScheduler) Prioritize(_ context.Context, jobID string) error {
+	s.prioritized = append(s.prioritized, jobID)
 	return s.err
 }
 
@@ -281,9 +321,17 @@ func newSwitchServer(t *testing.T, api printago.ClientInterface, sched queueSche
 
 func postSmartQueue(t *testing.T, srv *Server, enabled string) *httptest.ResponseRecorder {
 	t.Helper()
-	form := url.Values{}
-	form.Set("enabled", enabled)
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/smart-queue", strings.NewReader(form.Encode()))
+	return postForm(t, srv, "/smart-queue", url.Values{"enabled": {enabled}})
+}
+
+func postPrioritize(t *testing.T, srv *Server, jobID string) *httptest.ResponseRecorder {
+	t.Helper()
+	return postForm(t, srv, "/prioritize-job", url.Values{"id": {jobID}})
+}
+
+func postForm(t *testing.T, srv *Server, path string, form url.Values) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, path, strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rec := httptest.NewRecorder()
 	srv.routes().ServeHTTP(rec, req)

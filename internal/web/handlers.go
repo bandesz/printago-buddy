@@ -220,12 +220,12 @@ func (s *Server) handlePrioritizeJob(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	if err := s.client.PrioritizePrintJob(ctx, jobID); err != nil {
+	if err := s.scheduler.Prioritize(ctx, jobID); err != nil {
 		slog.Error("web: failed to prioritize print job", "job", jobID, "error", err) //nolint:gosec // jobID is validated against ^[a-z0-9]{24}$ above
-		http.Redirect(w, r, "/queue?error="+url.QueryEscape("Failed to prioritize job: "+err.Error()), http.StatusSeeOther)
+		redirectQueue(w, r, "Failed to prioritize job: "+err.Error())
 		return
 	}
-	http.Redirect(w, r, "/queue", http.StatusSeeOther)
+	redirectQueue(w, r, "")
 }
 
 func (s *Server) handleCancelJob(w http.ResponseWriter, r *http.Request) {
