@@ -1379,6 +1379,49 @@ func TestPollUnchangedSignatureDoesNoPrintagoWork(t *testing.T) {
 	})
 }
 
+func TestPollSettingsRetryContinuesIntoReserveAndRun(t *testing.T) {
+	env := newEnableEnv(t)
+	if err := env.sched.Poll(context.Background()); err != nil {
+		t.Fatalf("Poll() error = %v", err)
+	}
+	if len(env.api.tagPatches) != 0 || len(env.api.updates) != 0 || env.api.runCalls != 0 {
+		t.Fatalf("while off: tags %#v settings %#v runs %d", env.api.tagPatches, env.api.updates, env.api.runCalls)
+	}
+
+	env.api.updateErr = errors.New("patch settings")
+	err := env.sched.Enable(context.Background())
+	if !errors.Is(err, env.api.updateErr) {
+		t.Fatalf("Enable() error = %v, want %v", err, env.api.updateErr)
+	}
+	if len(env.api.tagPatches) != 0 || env.api.runCalls != 0 {
+		t.Fatalf("after failed settings patch: tags %#v runs %d, want none", env.api.tagPatches, env.api.runCalls)
+	}
+
+	env.api.updateErr = nil
+	env.api.resetCalls()
+	if err = env.sched.Poll(context.Background()); err != nil {
+		t.Fatalf("Poll() error = %v", err)
+	}
+
+	if len(env.api.updates) != 1 {
+		t.Fatalf("settings patches = %d, want 1", len(env.api.updates))
+	}
+	assertMatchingPaused(t, env.api.updates[0])
+	assertTagPatches(t, env.api.tagPatches, map[string]map[string]string{
+		"old":   {"filament.type": "PLA", "printer.id": "p1"},
+		"young": {"filament.type": "PLA", "user.tags": "&=buddy-hold"},
+	})
+	if env.api.runCalls != 1 {
+		t.Fatalf("RunQueue calls = %d, want 1", env.api.runCalls)
+	}
+	assertCallOrder(t, env.api.calls, "patch-settings", "update-tags")
+	assertCallOrder(t, env.api.calls, "update-tags", "run-queue")
+	assertRow(t, env.sched.Snapshot(), "old", smartqueue.Row{
+		PrinterID: "p1", PrinterName: "Alpha", Status: smartqueue.StatusAssigned,
+	})
+	assertRow(t, env.sched.Snapshot(), "young", smartqueue.Row{Status: smartqueue.StatusWaiting})
+}
+
 func TestPollPatchesSettingsBeforeRetryWhenSignaturesMatch(t *testing.T) {
 	env := newEnableEnv(t)
 	saveSchedulerState(t, env.path, smartqueue.State{Enabled: true, HasMergingSnapshot: true})

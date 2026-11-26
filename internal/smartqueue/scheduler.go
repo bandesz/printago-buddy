@@ -177,6 +177,8 @@ func (s *Scheduler) Disable(ctx context.Context) error {
 // Poll reads the pending queue and publishes the assignment plan.
 // It patches Printago when the switch is on and a signature changed, and when a
 // turn-on settings patch, reservation diff, or queue run is still unfinished.
+// The poll that finishes a pending settings patch continues into reserve and run
+// unless a reservation plan is already waiting.
 func (s *Scheduler) Poll(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -212,17 +214,20 @@ func (s *Scheduler) Poll(ctx context.Context) error {
 	assignmentChanged := !s.hasSig || assignSig != s.assignmentSig
 	dispatchChanged := !s.hasSig || dispatchSig != s.dispatchSig
 
+	resumedTurnOn := false
 	if state.Enabled && s.settingsPending {
 		if err = s.pauseMatching(ctx); err != nil {
 			return s.failPublish(err)
 		}
 		s.settingsPending = false
+		resumedTurnOn = true
 	}
 
-	if assignmentChanged || (state.Enabled && s.applyPending && s.pendingPlan == nil) {
+	waitingPlan := state.Enabled && s.applyPending && s.pendingPlan != nil
+	if assignmentChanged || (state.Enabled && s.applyPending && s.pendingPlan == nil) || (resumedTurnOn && !waitingPlan) {
 		return s.publishRecomputed(ctx, state, jobs, printers, groups, assignSig, dispatchSig)
 	}
-	if state.Enabled && s.applyPending && s.pendingPlan != nil {
+	if waitingPlan {
 		return s.retryApply(ctx, state, jobs, groups, assignSig, dispatchSig)
 	}
 	if state.Enabled && (dispatchChanged || s.dispatchPending) {
