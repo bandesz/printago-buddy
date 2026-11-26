@@ -121,6 +121,16 @@ func (c *CachingClient) PrioritizePrintJob(ctx context.Context, jobID string) er
 	return c.inner.PrioritizePrintJob(ctx, jobID)
 }
 
+// GetStoreSettings delegates directly to the inner client (not cached).
+func (c *CachingClient) GetStoreSettings(ctx context.Context) (StoreSettings, error) {
+	return c.inner.GetStoreSettings(ctx)
+}
+
+// UpdateStoreSettings delegates directly to the inner client (not cached).
+func (c *CachingClient) UpdateStoreSettings(ctx context.Context, update StoreSettingsUpdate) error {
+	return c.inner.UpdateStoreSettings(ctx, update)
+}
+
 // GetMaterials returns all materials, fetching from the API only when the
 // cached result has expired.
 func (c *CachingClient) GetMaterials(ctx context.Context) ([]Material, error) {

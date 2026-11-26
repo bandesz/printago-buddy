@@ -18,6 +18,8 @@ type stubClient struct {
 	materialCalls        int
 	materialVariantCalls int
 	partAssignmentCalls  map[string]int
+	storeSettingsCalls   int
+	storeSettingsUpdates []printago.StoreSettingsUpdate
 
 	printers         []printago.Printer
 	printerSlots     []printago.PrinterSlot
@@ -60,6 +62,14 @@ func (s *stubClient) GetPartMaterialAssignments(_ context.Context, partID string
 }
 func (s *stubClient) CancelPrintJob(_ context.Context, _ string) error     { return nil }
 func (s *stubClient) PrioritizePrintJob(_ context.Context, _ string) error { return nil }
+func (s *stubClient) GetStoreSettings(_ context.Context) (printago.StoreSettings, error) {
+	s.storeSettingsCalls++
+	return printago.StoreSettings{AutomaticQueueMatching: true}, nil
+}
+func (s *stubClient) UpdateStoreSettings(_ context.Context, update printago.StoreSettingsUpdate) error {
+	s.storeSettingsUpdates = append(s.storeSettingsUpdates, update)
+	return nil
+}
 
 // ---- GetPrinters ----
 
@@ -316,5 +326,48 @@ func TestCachingClient_GetPartMaterialAssignments_expiredCacheRefetches(t *testi
 
 	if stub.partAssignmentCalls["part1"] != 2 {
 		t.Errorf("underlying client called %d times after expiry, want 2", stub.partAssignmentCalls["part1"])
+	}
+}
+
+func TestStoreSettings_CachingClientForwardsEveryGet(t *testing.T) {
+	stub := &stubClient{}
+	c := printago.NewCachingClientWithTTL(stub, time.Minute)
+
+	got1, err := c.GetStoreSettings(context.Background())
+	if err != nil {
+		t.Fatalf("first call: unexpected error: %v", err)
+	}
+	got2, err := c.GetStoreSettings(context.Background())
+	if err != nil {
+		t.Fatalf("second call: unexpected error: %v", err)
+	}
+
+	if stub.storeSettingsCalls != 2 {
+		t.Errorf("underlying client called %d times, want 2", stub.storeSettingsCalls)
+	}
+	want := printago.StoreSettings{AutomaticQueueMatching: true}
+	if !reflect.DeepEqual(got1, want) || !reflect.DeepEqual(got2, want) {
+		t.Errorf("got %+v and %+v, want %+v", got1, got2, want)
+	}
+}
+
+func TestStoreSettings_CachingClientForwardsEveryUpdate(t *testing.T) {
+	stub := &stubClient{}
+	c := printago.NewCachingClientWithTTL(stub, time.Minute)
+	off := false
+	update := printago.StoreSettingsUpdate{AutomaticQueueMatching: &off}
+
+	if err := c.UpdateStoreSettings(context.Background(), update); err != nil {
+		t.Fatalf("first call: unexpected error: %v", err)
+	}
+	if err := c.UpdateStoreSettings(context.Background(), update); err != nil {
+		t.Fatalf("second call: unexpected error: %v", err)
+	}
+
+	if len(stub.storeSettingsUpdates) != 2 {
+		t.Fatalf("underlying client called %d times, want 2", len(stub.storeSettingsUpdates))
+	}
+	if !reflect.DeepEqual(stub.storeSettingsUpdates[0], update) || !reflect.DeepEqual(stub.storeSettingsUpdates[1], update) {
+		t.Errorf("updates = %+v, want both %+v", stub.storeSettingsUpdates, update)
 	}
 }

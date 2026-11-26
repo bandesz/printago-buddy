@@ -26,6 +26,8 @@ type ClientInterface interface {
 	GetPartMaterialAssignments(ctx context.Context, partID string) ([]PartMaterialAssignment, error)
 	CancelPrintJob(ctx context.Context, jobID string) error
 	PrioritizePrintJob(ctx context.Context, jobID string) error
+	GetStoreSettings(ctx context.Context) (StoreSettings, error)
+	UpdateStoreSettings(ctx context.Context, update StoreSettingsUpdate) error
 }
 
 // Client is an HTTP client for the Printago REST API.
@@ -184,4 +186,18 @@ func (c *Client) CancelPrintJob(ctx context.Context, jobID string) error {
 func (c *Client) PrioritizePrintJob(ctx context.Context, jobID string) error {
 	body := map[string]any{"printJobIds": []string{jobID}}
 	return c.do(ctx, http.MethodPatch, "/v1/print-jobs/move-to-queue-front", body, nil)
+}
+
+// GetStoreSettings returns store settings from GET /v1/settings/store.
+func (c *Client) GetStoreSettings(ctx context.Context) (StoreSettings, error) {
+	var settings StoreSettings
+	if err := c.do(ctx, http.MethodGet, "/v1/settings/store", nil, &settings); err != nil {
+		return StoreSettings{}, err
+	}
+	return settings, nil
+}
+
+// UpdateStoreSettings patches store settings with only the fields set on update.
+func (c *Client) UpdateStoreSettings(ctx context.Context, update StoreSettingsUpdate) error {
+	return c.do(ctx, http.MethodPatch, "/v1/settings/store", update, nil)
 }

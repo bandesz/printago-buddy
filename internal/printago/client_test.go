@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -365,5 +366,142 @@ func TestPrintJob_PreviewURI_fallsBackToPartThumbnail(t *testing.T) {
 	}
 	if got := (printago.PrintJob{}).PreviewURI(); got != "" {
 		t.Errorf("preview = %q, want empty", got)
+	}
+}
+
+func boolPtr(v bool) *bool { return &v }
+
+func assertJSON(t *testing.T, got []byte, want string) {
+	t.Helper()
+	var gotVal, wantVal any
+	if err := json.Unmarshal(got, &gotVal); err != nil {
+		t.Fatalf("decode body %s: %v", got, err)
+	}
+	if err := json.Unmarshal([]byte(want), &wantVal); err != nil {
+		t.Fatalf("decode want %s: %v", want, err)
+	}
+	if !reflect.DeepEqual(gotVal, wantVal) {
+		t.Errorf("body = %s, want %s", got, want)
+	}
+}
+
+func TestStoreSettingsGet(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want printago.StoreSettings
+	}{
+		{
+			name: "both fields",
+			body: `{"automaticQueueMatching":true,"plateMerging":{"automaticMerging":true}}`,
+			want: printago.StoreSettings{
+				AutomaticQueueMatching: true,
+				PlateMerging:           printago.PlateMerging{AutomaticMerging: true},
+			},
+		},
+		{
+			name: "plateMerging absent",
+			body: `{"automaticQueueMatching":true}`,
+			want: printago.StoreSettings{AutomaticQueueMatching: true},
+		},
+		{
+			name: "automaticMerging absent",
+			body: `{"automaticQueueMatching":true,"plateMerging":{}}`,
+			want: printago.StoreSettings{AutomaticQueueMatching: true},
+		},
+		{
+			name: "explicit false",
+			body: `{"automaticQueueMatching":false,"plateMerging":{"automaticMerging":false}}`,
+			want: printago.StoreSettings{},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var called bool
+			_, client := newTestServer(t, authHandler(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				called = true
+				if r.Method != http.MethodGet {
+					t.Errorf("method = %q, want GET", r.Method)
+				}
+				if r.URL.Path != "/v1/settings/store" {
+					t.Errorf("path = %q, want /v1/settings/store", r.URL.Path)
+				}
+				w.Header().Set("content-type", "application/json")
+				_, _ = w.Write([]byte(tc.body))
+			})))
+
+			got, err := client.GetStoreSettings(context.Background())
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !called {
+				t.Fatal("GET /v1/settings/store was not called")
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("got %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestStoreSettingsUpdate(t *testing.T) {
+	off := false
+	on := true
+	cases := []struct {
+		name   string
+		update printago.StoreSettingsUpdate
+		want   string
+	}{
+		{
+			name: "automatic merging only",
+			update: printago.StoreSettingsUpdate{
+				PlateMerging: &printago.PlateMergingUpdate{AutomaticMerging: boolPtr(off)},
+			},
+			want: `{"plateMerging":{"automaticMerging":false}}`,
+		},
+		{
+			name: "automatic queue matching only",
+			update: printago.StoreSettingsUpdate{
+				AutomaticQueueMatching: boolPtr(off),
+			},
+			want: `{"automaticQueueMatching":false}`,
+		},
+		{
+			name: "both",
+			update: printago.StoreSettingsUpdate{
+				AutomaticQueueMatching: boolPtr(off),
+				PlateMerging:           &printago.PlateMergingUpdate{AutomaticMerging: boolPtr(on)},
+			},
+			want: `{"automaticQueueMatching":false,"plateMerging":{"automaticMerging":true}}`,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var body []byte
+			_, client := newTestServer(t, authHandler(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodPatch {
+					t.Errorf("method = %q, want PATCH", r.Method)
+				}
+				if r.URL.Path != "/v1/settings/store" {
+					t.Errorf("path = %q, want /v1/settings/store", r.URL.Path)
+				}
+				var err error
+				body, err = io.ReadAll(r.Body)
+				if err != nil {
+					t.Fatal(err)
+				}
+				w.WriteHeader(http.StatusOK)
+			})))
+
+			if err := client.UpdateStoreSettings(context.Background(), tc.update); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if body == nil {
+				t.Fatal("PATCH /v1/settings/store was not called")
+			}
+			assertJSON(t, body, tc.want)
+		})
 	}
 }

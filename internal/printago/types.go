@@ -136,3 +136,27 @@ type MaterialAssignment struct {
 	MaterialID   string `json:"materialId"`
 	MaterialType string `json:"materialType"`
 }
+
+// StoreSettings is the subset of GET /v1/settings/store that Buddy reads.
+// A missing plateMerging object or automaticMerging field is false.
+type StoreSettings struct {
+	AutomaticQueueMatching bool         `json:"automaticQueueMatching"`
+	PlateMerging           PlateMerging `json:"plateMerging"`
+}
+
+// PlateMerging is the plateMerging object on store settings.
+type PlateMerging struct {
+	AutomaticMerging bool `json:"automaticMerging"`
+}
+
+// StoreSettingsUpdate is a partial body for PATCH /v1/settings/store.
+// A nil field is omitted. A pointer to false is sent.
+type StoreSettingsUpdate struct {
+	AutomaticQueueMatching *bool               `json:"automaticQueueMatching,omitempty"`
+	PlateMerging           *PlateMergingUpdate `json:"plateMerging,omitempty"`
+}
+
+// PlateMergingUpdate is the plateMerging object on a settings patch.
+type PlateMergingUpdate struct {
+	AutomaticMerging *bool `json:"automaticMerging,omitempty"`
+}
