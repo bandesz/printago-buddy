@@ -775,6 +775,105 @@ func TestGroupMatching(t *testing.T) {
 	}
 }
 
+func TestMatchingTroubleshoot(t *testing.T) {
+	const jobID = "job-1"
+	response := `{
+		"printers": [
+			{
+				"printerId": "printer-1",
+				"checks": [
+					{
+						"code": "tags-match",
+						"passed": false,
+						"comparisons": [
+							{"key": "printer.id", "requirement": "printer-1", "matched": false},
+							{"key": "buddy-hold", "requirement": "&=buddy-hold", "matched": true}
+						]
+					},
+					{
+						"code": "ready",
+						"passed": true
+					}
+				]
+			},
+			{
+				"printerId": "printer-2",
+				"checks": [
+					{
+						"code": "online",
+						"passed": false,
+						"comparisons": null
+					}
+				]
+			}
+		]
+	}`
+	want := printago.MatchingTroubleshootResult{
+		Printers: []printago.TroubleshootPrinter{
+			{
+				PrinterID: "printer-1",
+				Checks: []printago.TroubleshootCheck{
+					{
+						Code:   "tags-match",
+						Passed: false,
+						Comparisons: []printago.TroubleshootComparison{
+							{Key: "printer.id", Requirement: "printer-1", Matched: false},
+							{Key: "buddy-hold", Requirement: "&=buddy-hold", Matched: true},
+						},
+					},
+					{
+						Code:        "ready",
+						Passed:      true,
+						Comparisons: []printago.TroubleshootComparison{},
+					},
+				},
+			},
+			{
+				PrinterID: "printer-2",
+				Checks: []printago.TroubleshootCheck{
+					{
+						Code:        "online",
+						Passed:      false,
+						Comparisons: []printago.TroubleshootComparison{},
+					},
+				},
+			},
+		},
+	}
+
+	var gotMethod, gotPath string
+	var body []byte
+	_, client := newTestServer(t, authHandler(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		var err error
+		body, err = io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		w.Header().Set("content-type", "application/json")
+		_, _ = w.Write([]byte(response))
+	})))
+
+	got, err := client.MatchingTroubleshoot(context.Background(), jobID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotMethod != http.MethodGet {
+		t.Errorf("method = %q, want GET", gotMethod)
+	}
+	wantPath := "/v1/print-jobs/" + jobID + "/matching-troubleshoot"
+	if gotPath != wantPath {
+		t.Errorf("path = %q, want %s", gotPath, wantPath)
+	}
+	if len(body) != 0 {
+		t.Errorf("body = %s, want empty", body)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %+v, want %+v", got, want)
+	}
+}
+
 func assertPrinterTags(t *testing.T, tags any, want map[string]string) {
 	t.Helper()
 	encoded, err := json.Marshal(tags)

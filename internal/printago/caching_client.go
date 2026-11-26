@@ -141,6 +141,11 @@ func (c *CachingClient) GroupMatching(ctx context.Context, printJobIDs []string)
 	return c.inner.GroupMatching(ctx, printJobIDs)
 }
 
+// MatchingTroubleshoot delegates directly to the inner client (not cached).
+func (c *CachingClient) MatchingTroubleshoot(ctx context.Context, printJobID string) (MatchingTroubleshootResult, error) {
+	return c.inner.MatchingTroubleshoot(ctx, printJobID)
+}
+
 // GetMaterials returns all materials, fetching from the API only when the
 // cached result has expired.
 func (c *CachingClient) GetMaterials(ctx context.Context) ([]Material, error) {

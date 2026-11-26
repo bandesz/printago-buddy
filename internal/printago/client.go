@@ -30,6 +30,7 @@ type ClientInterface interface {
 	GetStoreSettings(ctx context.Context) (StoreSettings, error)
 	UpdateStoreSettings(ctx context.Context, update StoreSettingsUpdate) error
 	GroupMatching(ctx context.Context, printJobIDs []string) (GroupMatchingResult, error)
+	MatchingTroubleshoot(ctx context.Context, printJobID string) (MatchingTroubleshootResult, error)
 }
 
 // Client is an HTTP client for the Printago REST API.
@@ -224,6 +225,16 @@ func (c *Client) GroupMatching(ctx context.Context, printJobIDs []string) (Group
 	var result GroupMatchingResult
 	if err := c.do(ctx, http.MethodPost, "/v1/print-jobs/queue/group-matching", body, &result); err != nil {
 		return GroupMatchingResult{}, err
+	}
+	return result, nil
+}
+
+// MatchingTroubleshoot returns matching checks for one print job.
+func (c *Client) MatchingTroubleshoot(ctx context.Context, printJobID string) (MatchingTroubleshootResult, error) {
+	var result MatchingTroubleshootResult
+	path := "/v1/print-jobs/" + printJobID + "/matching-troubleshoot"
+	if err := c.do(ctx, http.MethodGet, path, nil, &result); err != nil {
+		return MatchingTroubleshootResult{}, err
 	}
 	return result, nil
 }

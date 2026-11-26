@@ -1,5 +1,7 @@
 package printago
 
+import "encoding/json"
+
 // Printer represents a printer entity from the Printago API.
 type Printer struct {
 	ID   string   `json:"id"`
@@ -177,4 +179,50 @@ type MatchPrinterVerdict struct {
 	Matched          bool   `json:"matched"`
 	Compatible       bool   `json:"compatible"`
 	FirstFailedCheck string `json:"firstFailedCheck"`
+}
+
+// MatchingTroubleshootResult is the GET /v1/print-jobs/{id}/matching-troubleshoot response.
+type MatchingTroubleshootResult struct {
+	Printers []TroubleshootPrinter `json:"printers"`
+}
+
+// TroubleshootPrinter is one printer in a matching-troubleshoot response.
+type TroubleshootPrinter struct {
+	PrinterID string              `json:"printerId"`
+	Checks    []TroubleshootCheck `json:"checks"`
+}
+
+// TroubleshootCheck is one matching criterion for a printer.
+type TroubleshootCheck struct {
+	Code        string                   `json:"code"`
+	Passed      bool                     `json:"passed"`
+	Comparisons []TroubleshootComparison `json:"comparisons"`
+}
+
+// TroubleshootComparison is one tag comparison on a check.
+type TroubleshootComparison struct {
+	Key         string `json:"key"`
+	Requirement string `json:"requirement"`
+	Matched     bool   `json:"matched"`
+}
+
+// UnmarshalJSON decodes a check. A missing or null comparisons list becomes empty.
+func (c *TroubleshootCheck) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		Code        string                   `json:"code"`
+		Passed      bool                     `json:"passed"`
+		Comparisons []TroubleshootComparison `json:"comparisons"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	if raw.Comparisons == nil {
+		raw.Comparisons = []TroubleshootComparison{}
+	}
+	*c = TroubleshootCheck{
+		Code:        raw.Code,
+		Passed:      raw.Passed,
+		Comparisons: raw.Comparisons,
+	}
+	return nil
 }

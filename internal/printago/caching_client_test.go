@@ -13,16 +13,18 @@ import (
 // returns preset data. It is used to verify that the caching layer hits the
 // underlying client only when expected.
 type stubClient struct {
-	printerCalls         int
-	printerSlotCalls     int
-	materialCalls        int
-	materialVariantCalls int
-	partAssignmentCalls  map[string]int
-	storeSettingsCalls   int
-	storeSettingsUpdates []printago.StoreSettingsUpdate
-	printJobTagUpdates   []printJobTagUpdate
-	groupMatchingCalls   [][]string
-	groupMatching        printago.GroupMatchingResult
+	printerCalls              int
+	printerSlotCalls          int
+	materialCalls             int
+	materialVariantCalls      int
+	partAssignmentCalls       map[string]int
+	storeSettingsCalls        int
+	storeSettingsUpdates      []printago.StoreSettingsUpdate
+	printJobTagUpdates        []printJobTagUpdate
+	groupMatchingCalls        [][]string
+	groupMatching             printago.GroupMatchingResult
+	matchingTroubleshootCalls []string
+	matchingTroubleshoot      printago.MatchingTroubleshootResult
 
 	printers         []printago.Printer
 	printerSlots     []printago.PrinterSlot
@@ -87,6 +89,11 @@ func (s *stubClient) UpdatePrintJobTags(_ context.Context, jobID string, tags ma
 func (s *stubClient) GroupMatching(_ context.Context, printJobIDs []string) (printago.GroupMatchingResult, error) {
 	s.groupMatchingCalls = append(s.groupMatchingCalls, printJobIDs)
 	return s.groupMatching, nil
+}
+
+func (s *stubClient) MatchingTroubleshoot(_ context.Context, printJobID string) (printago.MatchingTroubleshootResult, error) {
+	s.matchingTroubleshootCalls = append(s.matchingTroubleshootCalls, printJobID)
+	return s.matchingTroubleshoot, nil
 }
 
 // ---- GetPrinters ----
@@ -420,6 +427,44 @@ func TestGroupMatching_CachingClientForwardsEveryCall(t *testing.T) {
 	}
 	if !reflect.DeepEqual(stub.groupMatchingCalls[0], []string{"job-a", "job-b"}) || !reflect.DeepEqual(stub.groupMatchingCalls[1], []string{"job-c"}) {
 		t.Errorf("printJobIds = %#v, want [job-a job-b] then [job-c]", stub.groupMatchingCalls)
+	}
+	if !reflect.DeepEqual(got1, want) || !reflect.DeepEqual(got2, want) {
+		t.Errorf("got %+v and %+v, want %+v", got1, got2, want)
+	}
+}
+
+func TestMatchingTroubleshoot_CachingClientForwardsEveryCall(t *testing.T) {
+	want := printago.MatchingTroubleshootResult{
+		Printers: []printago.TroubleshootPrinter{{
+			PrinterID: "printer-1",
+			Checks: []printago.TroubleshootCheck{{
+				Code:   "tags-match",
+				Passed: false,
+				Comparisons: []printago.TroubleshootComparison{{
+					Key:         "printer.id",
+					Requirement: "printer-1",
+					Matched:     false,
+				}},
+			}},
+		}},
+	}
+	stub := &stubClient{matchingTroubleshoot: want}
+	c := printago.NewCachingClientWithTTL(stub, time.Minute)
+
+	got1, err := c.MatchingTroubleshoot(context.Background(), "job-1")
+	if err != nil {
+		t.Fatalf("first call: unexpected error: %v", err)
+	}
+	got2, err := c.MatchingTroubleshoot(context.Background(), "job-2")
+	if err != nil {
+		t.Fatalf("second call: unexpected error: %v", err)
+	}
+
+	if len(stub.matchingTroubleshootCalls) != 2 {
+		t.Fatalf("underlying client called %d times, want 2", len(stub.matchingTroubleshootCalls))
+	}
+	if stub.matchingTroubleshootCalls[0] != "job-1" || stub.matchingTroubleshootCalls[1] != "job-2" {
+		t.Errorf("print job ids = %#v, want [job-1 job-2]", stub.matchingTroubleshootCalls)
 	}
 	if !reflect.DeepEqual(got1, want) || !reflect.DeepEqual(got2, want) {
 		t.Errorf("got %+v and %+v, want %+v", got1, got2, want)
