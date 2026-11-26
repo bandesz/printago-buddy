@@ -5,7 +5,7 @@ Batches run in order. Tasks inside a batch run in order. `user-flows.md` wins if
 Domain skills: none.
 
 ## Batch 1: Matching core
-**Status:** in progress
+**Status:** done
 
 
 No Printago calls. No web UI.
@@ -26,7 +26,7 @@ No Printago calls. No web UI.
 - Out of scope: Matching, lanes, prioritize
 
 ### Task 1.2: Maximum-weight assignment
-**Status:** in progress
+**Status:** done — `bca9f64` (+ review fixes: `cb421da`)
 - Files: Create `internal/smartqueue/matching.go`, `internal/smartqueue/matching_test.go`
 - TDD: yes
 - UI flow: N/A
@@ -42,7 +42,7 @@ No Printago calls. No web UI.
 - Out of scope: Tag strings, Printago verdicts
 
 ### Task 1.3: Reservation tag edits
-**Status:** pending
+**Status:** done — `1687679`
 - Files: Create `internal/smartqueue/tags.go`, `internal/smartqueue/tags_test.go`
 - TDD: yes
 - UI flow: N/A
@@ -59,7 +59,7 @@ No Printago calls. No web UI.
 - Out of scope: HTTP PATCH
 
 ### Task 1.4: Edges from matcher verdicts
-**Status:** pending
+**Status:** done — `2a57cea`
 - Files: Create `internal/smartqueue/edges.go`, `internal/smartqueue/edges_test.go`
 - TDD: yes
 - UI flow: N/A
@@ -77,7 +77,7 @@ No Printago calls. No web UI.
 - Out of scope: HTTP, group truncation
 
 ### Task 1.5: Change signature
-**Status:** pending
+**Status:** done — `342af4d` (+ review fixes: `070de75`)
 - Files: Create `internal/smartqueue/signature.go`, `internal/smartqueue/signature_test.go`
 - TDD: yes
 - UI flow: N/A
@@ -91,11 +91,11 @@ No Printago calls. No web UI.
 - Out of scope: The poll loop
 
 ## Batch 2: Printago client
-**Status:** pending
+**Status:** done
 
 
 ### Task 2.1: List every visible pending job
-**Status:** pending
+**Status:** done — `f634af1`
 - Files: Modify `internal/printago/client.go`, `internal/printago/client_test.go`
 - TDD: yes
 - UI flow: N/A
@@ -108,7 +108,7 @@ No Printago calls. No web UI.
 - Out of scope: New endpoints
 
 ### Task 2.2: Store settings get and patch
-**Status:** pending
+**Status:** done — `e74a22b`
 - Files: Modify `internal/printago/types.go`, `internal/printago/client.go`, `internal/printago/client_test.go`, `internal/printago/caching_client.go`, `internal/printago/caching_client_test.go`, `internal/jobs/filament_tagger_test.go`
 - TDD: yes
 - UI flow: N/A
@@ -121,7 +121,7 @@ No Printago calls. No web UI.
 - Out of scope: The enable sequence
 
 ### Task 2.3: Patch job tags
-**Status:** pending
+**Status:** done — `c3d2bbd`
 - Files: Modify `internal/printago/client.go`, `internal/printago/client_test.go`, `internal/printago/caching_client.go`, `internal/printago/types.go`, and the two test doubles
 - TDD: yes
 - UI flow: N/A
@@ -134,7 +134,7 @@ No Printago calls. No web UI.
 - Out of scope: Building the tag object
 
 ### Task 2.4: Group matching
-**Status:** pending
+**Status:** done — `db33c96`
 - Files: Modify `internal/printago/client.go`, `internal/printago/types.go`, `internal/printago/client_test.go`, `internal/printago/caching_client.go`, and the two test doubles
 - TDD: yes
 - UI flow: N/A
@@ -146,7 +146,7 @@ No Printago calls. No web UI.
 - Out of scope: The truncation retry loop
 
 ### Task 2.5: Matching troubleshoot
-**Status:** pending
+**Status:** done — `85f7bbb`
 - Files: Modify `internal/printago/client.go`, `internal/printago/types.go`, `internal/printago/client_test.go`, `internal/printago/caching_client.go`, and the two test doubles
 - TDD: yes
 - UI flow: N/A
@@ -157,7 +157,7 @@ No Printago calls. No web UI.
 - Out of scope: Deciding edges
 
 ### Task 2.6: Manual queue run
-**Status:** pending
+**Status:** done — `25790ae`
 - Files: Modify `internal/printago/client.go`, `internal/printago/client_test.go`, `internal/printago/caching_client.go`, and the two test doubles
 - TDD: yes
 - UI flow: N/A
@@ -168,11 +168,11 @@ No Printago calls. No web UI.
 - Out of scope: Deciding when to call it
 
 ## Batch 3: Scheduler
-**Status:** pending
+**Status:** done
 
 
 ### Task 3.1: Configuration
-**Status:** pending
+**Status:** done — `be67091`
 - Files: Modify `internal/config/config.go`, `internal/config/config_test.go`, `.env.example`
 - TDD: yes
 - UI flow: N/A
@@ -186,7 +186,7 @@ No Printago calls. No web UI.
 - Out of scope: Creating the directory
 
 ### Task 3.2: State file
-**Status:** pending
+**Status:** done — `4462c44`
 - Files: Create `internal/smartqueue/state.go`, `internal/smartqueue/state_test.go`
 - TDD: yes
 - UI flow: N/A
@@ -198,7 +198,7 @@ No Printago calls. No web UI.
 - Out of scope: Printago
 
 ### Task 3.3: Build and publish a plan
-**Status:** pending
+**Status:** done — `3fd1b01`
 - Files: Create `internal/smartqueue/plan.go`, `internal/smartqueue/plan_test.go`
 - TDD: yes
 - UI flow: Flow 6, Flow 12
@@ -214,7 +214,7 @@ No Printago calls. No web UI.
 - Out of scope: HTTP and tag PATCH
 
 ### Task 3.4: Reservation diff
-**Status:** pending
+**Status:** done — `15b8056`
 - Files: Create `internal/smartqueue/reserve.go`, `internal/smartqueue/reserve_test.go`
 - TDD: yes
 - UI flow: Flow 6, Flow 7
@@ -229,7 +229,7 @@ No Printago calls. No web UI.
 - Out of scope: Persisting the plan
 
 ### Task 3.5: Turn on
-**Status:** pending
+**Status:** done — `359f2d2` (+ review fixes: `d389a6a`)
 - Files: Create `internal/smartqueue/scheduler.go`, `internal/smartqueue/scheduler_test.go`
 - TDD: yes
 - UI flow: Flow 3
@@ -245,7 +245,7 @@ No Printago calls. No web UI.
 - Out of scope: The HTTP form
 
 ### Task 3.6: Turn off
-**Status:** pending
+**Status:** done — `ef7c29e`
 - Files: Modify `internal/smartqueue/scheduler.go`, `internal/smartqueue/scheduler_test.go`
 - TDD: yes
 - UI flow: Flow 9
@@ -259,7 +259,7 @@ No Printago calls. No web UI.
 - Out of scope: The HTTP form
 
 ### Task 3.7: Poll
-**Status:** pending
+**Status:** done — `8dfe840` (+ review fixes: `2f8fd2e`, `1fefa27`)
 - Files: Modify `internal/smartqueue/scheduler.go`, `internal/smartqueue/scheduler_test.go`
 - TDD: yes
 - UI flow: Flow 1, Flow 4, Flow 5, Flow 7, Flow 8
@@ -281,7 +281,7 @@ No Printago calls. No web UI.
 - Out of scope: Signal handling
 
 ### Task 3.8: Prioritize
-**Status:** pending
+**Status:** done — `e454a67`
 - Files: Modify `internal/smartqueue/scheduler.go`, `internal/smartqueue/scheduler_test.go`
 - TDD: yes
 - UI flow: Flow 11
@@ -298,7 +298,7 @@ No Printago calls. No web UI.
 - Out of scope: The HTTP redirect
 
 ### Task 3.9: Process wiring
-**Status:** pending
+**Status:** done — `5878603`
 - Files: Modify `cmd/printago-buddy/main.go`, `Dockerfile`, `docker-compose.yml`, `AGENTS.md`, `internal/smartqueue/scheduler_test.go`, `internal/web/server.go`, `internal/web/queue_test.go`
 - TDD: no
 - UI flow: Flow 10
@@ -313,13 +313,13 @@ No Printago calls. No web UI.
 - Out of scope: Changing the filament tagger schedule
 
 ## Batch 4: Queue page
-**Status:** pending
+**Status:** done
 
 
 UI and the tests below ship in this batch.
 
 ### Task 4.1: Assignment column from the cache
-**Status:** pending
+**Status:** done — `12e0a40`
 - Files: Modify `internal/web/handlers.go`, `internal/web/server.go`, `internal/web/templates/queue.html`, `internal/web/queue_test.go`, create `internal/web/queue_page_test.go`
 - TDD: no (UI flow test)
 - UI flow: Flow 2, Flow 8, Flow 12
@@ -335,7 +335,7 @@ UI and the tests below ship in this batch.
 - Out of scope: The switch POST
 
 ### Task 4.2: Switch control and best-matching column
-**Status:** pending
+**Status:** done — `b0fcc24`
 - Files: Modify `internal/web/templates/queue.html`, `internal/web/queue_page_test.go`
 - TDD: no (UI flow test)
 - UI flow: Flow 1, Flow 3, Flow 9
@@ -348,7 +348,7 @@ UI and the tests below ship in this batch.
 - Out of scope: Enable's Printago sequence, covered by task 3.5
 
 ### Task 4.3: Switch POST
-**Status:** pending
+**Status:** done — `e017256`
 - Files: Modify `internal/web/server.go`, `internal/web/handlers.go`, `internal/web/queue_page_test.go`
 - TDD: no (UI flow test)
 - UI flow: Flow 3, Flow 9
@@ -361,7 +361,7 @@ UI and the tests below ship in this batch.
 - Out of scope: Banner rendering of a background poll error
 
 ### Task 4.4: Prioritize POST
-**Status:** pending
+**Status:** done — `bf90dbd`
 - Files: Modify `internal/web/handlers.go`, `internal/web/queue_page_test.go`
 - TDD: no (UI flow test)
 - UI flow: Flow 11
@@ -375,7 +375,7 @@ UI and the tests below ship in this batch.
 - Out of scope: Lane weights, covered by task 3.8
 
 ### Task 4.5: Error banner
-**Status:** pending
+**Status:** done — `f32a1e7`
 - Files: Modify `internal/web/handlers.go`, `internal/web/templates/queue.html`, `internal/web/queue_page_test.go`
 - TDD: no (UI flow test)
 - UI flow: Flow 1, Flow 7
@@ -388,7 +388,7 @@ UI and the tests below ship in this batch.
 - Out of scope: New banner styles
 
 ### Task 4.6: Batch gate
-**Status:** pending
+**Status:** done — suite gate, no commit
 - Files: none
 - TDD: no
 - UI flow: N/A

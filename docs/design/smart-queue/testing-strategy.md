@@ -6,7 +6,7 @@ A later implementation pass that can reach a running daemon also loads `/queue` 
 
 | Flow | Test |
 |---|---|
-| Flow 1 | `TestStartupMissingStateFileDoesNotCallPrintago` |
+| Flow 1 | `TestStartupMissingStateFileDoesNotCallPrintago`, `TestPollMissingFileFetchErrorPublishesDisabledPlan`, `TestSmartQueueToggle` |
 | Flow 2 | `TestQueuePageDoesNotMatchOnReload` |
 | Flow 3 | `TestEnable` (pause, reserve, run), `TestSmartQueueToggle` (control label and confirm copy) |
 | Flow 4 | `TestReadyChangeRunsQueueWithoutRecompute` |
@@ -14,10 +14,10 @@ A later implementation pass that can reach a running daemon also loads `/queue` 
 | Flow 6 | `TestIncompatibleJobIsParkedWhenEnabled` |
 | Flow 7 | `TestApplyFailureKeepsPublishedPlan` |
 | Flow 8 | `TestEmptyQueuePage` |
-| Flow 9 | `TestDisableSmartQueue` |
+| Flow 9 | `TestDisable`, `TestSmartQueueToggle`, `TestSmartQueuePost` |
 | Flow 10 | `TestRestartResumesEnabled`, `TestShutdownDoesNotDisable` |
 | Flow 11 | `TestPrioritizeBeatsOlderNormalJob`, `TestPrioritizeLowDoesNotBeatNormal`, `TestPrioritizeWhileOffMovesToFrontOnce` |
-| Flow 12 | `TestSkippedRowsAreNotPatched` |
+| Flow 12 | `TestPollSkipsMergedAndUnreadable`, `TestReserveSkipsMergedAndUnreadable`, `TestQueuePageDoesNotMatchOnReload` |
 
 Matching tests also include `TestHeavyJobDoesNotTakeTheOnlyPrinterOfALighterJob`.
 

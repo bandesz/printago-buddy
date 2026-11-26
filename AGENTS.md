@@ -88,7 +88,7 @@ The process exits immediately on startup if either required variable is missing.
 - `internal/jobs/` — cron job implementations
   - `filament_tagger.go` — `FilamentTaggerJob`
 - `internal/web/` — HTTP server and print queue UI
-  - `server.go` — `Server`; stores the smart queue scheduler, registers routes (`/queue`, `/cancel-job`, `/prioritize-job`), and serves on `WEB_PORT`
+  - `server.go` — `Server`; stores the smart queue scheduler, registers routes (`/queue`, `/smart-queue`, `/cancel-job`, `/prioritize-job`), and serves on `WEB_PORT`
   - `handlers.go` — request handlers; fetches jobs/printers/slots/materials concurrently and renders the queue page
   - `matcher.go` — `RankPrinters`; ranks printers by filament compatibility for a given job's `PartMaterialAssignment` list
   - `templates/` — embedded HTML templates
