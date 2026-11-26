@@ -25,6 +25,7 @@ type queuePageData struct {
 	NormalEntries []queueEntry
 	LowEntries    []queueEntry
 	Err           string
+	SmartQueueOn  bool
 }
 
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
@@ -43,6 +44,8 @@ func (s *Server) handleQueue(w http.ResponseWriter, r *http.Request) {
 	if flash := r.URL.Query().Get("error"); flash != "" {
 		data.Err = flash
 	}
+	plan := s.scheduler.Snapshot()
+	data.SmartQueueOn = plan != nil && plan.Enabled
 
 	jobs, err := s.client.GetPrintJobs(ctx)
 	if err != nil {
@@ -95,7 +98,8 @@ func (s *Server) handleQueue(w http.ResponseWriter, r *http.Request) {
 
 	// Fetch part material assignments for all jobs concurrently.
 	assignmentsMap := fetchAllPartAssignments(ctx, s.client, jobs)
-	plan := s.scheduler.Snapshot()
+	plan = s.scheduler.Snapshot()
+	data.SmartQueueOn = plan != nil && plan.Enabled
 
 	normalEntries := make([]queueEntry, 0, len(jobs))
 	lowEntries := make([]queueEntry, 0)

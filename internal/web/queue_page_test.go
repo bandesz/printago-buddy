@@ -114,6 +114,132 @@ func TestEmptyQueuePage(t *testing.T) {
 	}
 }
 
+const (
+	confirmTurnOn  = "Turn on smart queue? Printago will stop automatic matching, and Buddy will choose which job each printer runs."
+	confirmTurnOff = "Turn off smart queue? This removes printer assignments and park tags and turns Printago automatic matching back on."
+)
+
+func TestSmartQueueToggle(t *testing.T) {
+	t.Run("nil snapshot", func(t *testing.T) {
+		api := queueFixture()
+		srv, sched := newQueuePage(t, api)
+		if sched.Snapshot() != nil {
+			t.Fatalf("Snapshot() = %+v, want nil", sched.Snapshot())
+		}
+		html := renderQueue(t, srv)
+		assertSmartQueueToggle(t, html, "Smart queue: Off", "on", confirmTurnOn)
+		if !strings.Contains(html, "Best Matching Printers") || !strings.Contains(html, ">Prioritize<") {
+			t.Fatalf("best-matching printers or Prioritize missing while smart queue is off:\n%s", html)
+		}
+	})
+
+	t.Run("disabled", func(t *testing.T) {
+		api := queueFixture()
+		srv, sched := newQueuePage(t, api)
+		if err := sched.Poll(context.Background()); err != nil {
+			t.Fatalf("Poll() error = %v", err)
+		}
+		snap := sched.Snapshot()
+		if snap == nil || snap.Enabled {
+			t.Fatalf("Snapshot() = %+v, want disabled", snap)
+		}
+		html := renderQueue(t, srv)
+		assertSmartQueueToggle(t, html, "Smart queue: Off", "on", confirmTurnOn)
+		if !strings.Contains(html, "Best Matching Printers") {
+			t.Fatalf("best-matching printers column missing while smart queue is off:\n%s", html)
+		}
+	})
+
+	t.Run("enabled", func(t *testing.T) {
+		srv, sched := enabledQueuePage(t, queueFixture())
+		if snap := sched.Snapshot(); snap == nil || !snap.Enabled {
+			t.Fatalf("Snapshot() = %+v, want enabled", snap)
+		}
+		html := renderQueue(t, srv)
+		assertSmartQueueToggle(t, html, "Smart queue: On", "off", confirmTurnOff)
+	})
+}
+
+func TestBestMatching(t *testing.T) {
+	api := queueFixture()
+	api.jobs = append(api.jobs, printago.PrintJob{
+		ID:        "low-job",
+		PartName:  "Filler",
+		Priority:  1000,
+		CreatedAt: time.Now().UTC().Add(-time.Hour).Format(time.RFC3339),
+	})
+	srv, sched := enabledQueuePage(t, api)
+	if snap := sched.Snapshot(); snap == nil || !snap.Enabled {
+		t.Fatalf("Snapshot() = %+v, want enabled", snap)
+	}
+
+	html := renderQueue(t, srv)
+	split := strings.Index(html, "Low priority")
+	if split < 0 || !strings.Contains(html[:split], ">Widget<") || !strings.Contains(html[split:], ">Filler<") {
+		t.Fatalf("normal or low-priority section missing:\n%s", html)
+	}
+	for _, section := range []string{html[:split], html[split:]} {
+		if strings.Contains(section, "Best Matching Printers") || strings.Contains(section, `class="printer-list"`) {
+			t.Fatalf("best-matching printers column present while smart queue is on:\n%s", html)
+		}
+		if !strings.Contains(section, ">Prioritize<") {
+			t.Fatalf("Prioritize button missing while smart queue is on:\n%s", html)
+		}
+	}
+}
+
+func enabledQueuePage(t *testing.T, api *recordingClient) (*Server, *smartqueue.Scheduler) {
+	t.Helper()
+	srv, sched := newQueuePage(t, api)
+	if err := sched.Enable(context.Background()); err != nil {
+		t.Fatalf("Enable() error = %v", err)
+	}
+	return srv, sched
+}
+
+func assertSmartQueueToggle(t *testing.T, html, label, enabled, confirm string) {
+	t.Helper()
+	form := elementByID(t, html, "smart-queue-toggle")
+	if !strings.Contains(form, `method="POST"`) || !strings.Contains(form, `action="/smart-queue"`) {
+		t.Fatalf("smart queue toggle form = %s, want POST /smart-queue", form)
+	}
+	if !strings.Contains(form, label) {
+		t.Fatalf("smart queue toggle = %s, want label %q", form, label)
+	}
+	other := "Smart queue: On"
+	if label == other {
+		other = "Smart queue: Off"
+	}
+	if strings.Contains(form, other) {
+		t.Fatalf("smart queue toggle contains %q:\n%s", other, form)
+	}
+	hidden := `<input type="hidden" name="enabled" value="` + enabled + `">`
+	if !strings.Contains(form, hidden) {
+		t.Fatalf("hidden enabled input missing %s:\n%s", hidden, form)
+	}
+	if !strings.Contains(form, "confirm('"+confirm+"')") {
+		t.Fatalf("confirm text = %s, want %q", form, confirm)
+	}
+}
+
+func elementByID(t *testing.T, html, id string) string {
+	t.Helper()
+	marker := `id="` + id + `"`
+	i := strings.Index(html, marker)
+	if i < 0 {
+		t.Fatalf("%s missing:\n%s", marker, html)
+	}
+	start := strings.LastIndex(html[:i], "<form")
+	if start < 0 {
+		t.Fatalf("%s is not on a form:\n%s", marker, html)
+	}
+	endRel := strings.Index(html[i:], "</form>")
+	if endRel < 0 {
+		t.Fatalf("%s form is not closed:\n%s", marker, html)
+	}
+	return html[start : i+endRel+len("</form>")]
+}
+
 func newQueuePage(t *testing.T, api *recordingClient) (*Server, *smartqueue.Scheduler) {
 	t.Helper()
 	sched := smartqueue.NewScheduler(api, smartqueue.Config{

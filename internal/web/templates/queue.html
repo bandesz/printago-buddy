@@ -66,6 +66,11 @@
         margin-bottom: 4px;
     }
     .btn-prioritize:hover { background: #eff6ff; }
+    .btn-smart-queue {
+        background: #fff; border: 1px solid #cbd5e1; color: #1e293b;
+        font-size: 13px; font-weight: 600; padding: 6px 12px; border-radius: 6px; cursor: pointer;
+    }
+    .btn-smart-queue:hover { background: #f8fafc; }
     .filament-chip {
         position: relative;
         display: inline-block; width: 12px; height: 16px;
@@ -92,8 +97,21 @@
     .filament-chip:hover::after { opacity: 1; }
 </style>
 
-<div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:20px;">
-    <h1 style="margin-bottom:0;">Print Queue</h1>
+<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
+    <div style="display:flex; align-items:center; gap:16px;">
+        <h1 style="margin-bottom:0;">Print Queue</h1>
+        {{if .SmartQueueOn}}
+        <form id="smart-queue-toggle" method="POST" action="/smart-queue" onsubmit="return confirm('Turn off smart queue? This removes printer assignments and park tags and turns Printago automatic matching back on.')">
+            <input type="hidden" name="enabled" value="off">
+            <button type="submit" class="btn-smart-queue">Smart queue: On</button>
+        </form>
+        {{else}}
+        <form id="smart-queue-toggle" method="POST" action="/smart-queue" onsubmit="return confirm('Turn on smart queue? Printago will stop automatic matching, and Buddy will choose which job each printer runs.')">
+            <input type="hidden" name="enabled" value="on">
+            <button type="submit" class="btn-smart-queue">Smart queue: Off</button>
+        </form>
+        {{end}}
+    </div>
     <span id="last-refresh" style="font-size:12px; color:#94a3b8;"></span>
 </div>
 
@@ -105,7 +123,7 @@
         <tr>
             <th>Job</th>
             <th>Materials</th>
-            <th>Best Matching Printers</th>
+            {{if not .SmartQueueOn}}<th>Best Matching Printers</th>{{end}}
             <th>Assignment</th>
             <th class="col-actions"></th>
         </tr>
@@ -129,6 +147,7 @@
                 </div>
             </td>
             <td>{{template "materials" .JobMaterials}}</td>
+            {{if not $.SmartQueueOn}}
             <td>
                 <div class="printer-list">
                     {{if .Printers}}
@@ -150,6 +169,7 @@
                     {{end}}
                 </div>
             </td>
+            {{end}}
             <td class="assignment">{{.Assignment}}</td>
             <td class="col-actions">
                 <form method="POST" action="/prioritize-job">
@@ -165,7 +185,7 @@
         {{end}}
         {{if .LowEntries}}
         <tr class="section-divider">
-            <td colspan="5">Low priority</td>
+            <td colspan="{{if $.SmartQueueOn}}4{{else}}5{{end}}">Low priority</td>
         </tr>
         {{range .LowEntries}}
         <tr>
@@ -185,6 +205,7 @@
                 </div>
             </td>
             <td>{{template "materials" .JobMaterials}}</td>
+            {{if not $.SmartQueueOn}}
             <td>
                 <div class="printer-list">
                     {{if .Printers}}
@@ -206,6 +227,7 @@
                     {{end}}
                 </div>
             </td>
+            {{end}}
             <td class="assignment">{{.Assignment}}</td>
             <td class="col-actions">
                 <form method="POST" action="/prioritize-job">
