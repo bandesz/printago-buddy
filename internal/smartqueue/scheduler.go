@@ -473,10 +473,13 @@ func (s *Scheduler) loadGroups(ctx context.Context, jobs []printago.PrintJob) ([
 }
 
 func (s *Scheduler) failPublish(err error) error {
-	if current := s.cache.Snapshot(); current != nil {
-		current.Err = err.Error()
-		s.cache.Publish(*current)
+	current := s.cache.Snapshot()
+	if current == nil {
+		s.cache.Publish(Plan{Enabled: false, Err: err.Error()})
+		return err
 	}
+	current.Err = err.Error()
+	s.cache.Publish(*current)
 	return err
 }
 
@@ -590,7 +593,7 @@ func derefString(value *string) string {
 }
 
 // publishLoaded reports the saved switch before fallible poll work.
-// A missing file stays unpublished until a plan is ready, so a failed first fetch leaves Snapshot nil.
+// A missing file has no saved switch, so it stays unpublished until a later publish.
 func (s *Scheduler) publishLoaded(state State) {
 	if _, err := os.Stat(s.cfg.StateFile); err != nil {
 		return

@@ -1894,7 +1894,7 @@ func TestPollNamedTruncationKeepsPublishedPlan(t *testing.T) {
 	})
 }
 
-func TestPollMissingFileFetchErrorLeavesSnapshotNil(t *testing.T) {
+func TestPollMissingFileFetchErrorPublishesDisabledPlan(t *testing.T) {
 	api := &enableAPI{}
 	api.setOlderWins()
 	api.jobsErr = errors.New("jobs")
@@ -1905,8 +1905,29 @@ func TestPollMissingFileFetchErrorLeavesSnapshotNil(t *testing.T) {
 	if !errors.Is(err, api.jobsErr) {
 		t.Fatalf("Poll() error = %v, want %v", err, api.jobsErr)
 	}
-	if sched.Snapshot() != nil {
-		t.Fatalf("Snapshot() = %+v, want nil", sched.Snapshot())
+	snap := sched.Snapshot()
+	if snap == nil || snap.Enabled || snap.Err != err.Error() || len(snap.Rows) != 0 {
+		t.Fatalf("Snapshot() = %+v, want disabled with the jobs error and no rows", snap)
+	}
+	assertNoPrintagoWrites(t, api)
+}
+
+func TestPollUndecodableStateFilePublishesError(t *testing.T) {
+	api := &enableAPI{}
+	api.setOlderWins()
+	path := filepath.Join(t.TempDir(), "smart-queue.json")
+	if writeErr := os.WriteFile(path, []byte("{"), 0o600); writeErr != nil {
+		t.Fatal(writeErr)
+	}
+	sched := smartqueue.NewScheduler(api, smartqueue.Config{HalfLife: time.Minute, StateFile: path})
+
+	err := sched.Poll(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "decode state file") {
+		t.Fatalf("Poll() error = %v, want a decode error", err)
+	}
+	snap := sched.Snapshot()
+	if snap == nil || snap.Enabled || snap.Err != err.Error() || len(snap.Rows) != 0 {
+		t.Fatalf("Snapshot() = %+v, want disabled with the decode error and no rows", snap)
 	}
 	assertNoPrintagoWrites(t, api)
 }
