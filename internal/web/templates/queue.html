@@ -115,7 +115,7 @@
     <span id="last-refresh" style="font-size:12px; color:#94a3b8;"></span>
 </div>
 
-{{if .Err}}<div class="error">{{.Err}}</div>{{end}}
+{{if .Err}}<div class="error">{{range $i, $msg := .Err}}{{if $i}}<br>{{end}}{{$msg}}{{end}}</div>{{end}}
 
 {{if or .NormalEntries .LowEntries}}
 <table>

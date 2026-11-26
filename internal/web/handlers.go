@@ -25,7 +25,7 @@ type queuePageData struct {
 	Page          string
 	NormalEntries []queueEntry
 	LowEntries    []queueEntry
-	Err           string
+	Err           []string
 	SmartQueueOn  bool
 }
 
@@ -42,16 +42,14 @@ func (s *Server) handleQueue(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	data := queuePageData{Page: "queue"}
-	if flash := r.URL.Query().Get("error"); flash != "" {
-		data.Err = flash
-	}
+	flash := r.URL.Query().Get("error")
 	plan := s.currentPlan()
 	data.SmartQueueOn = plan != nil && plan.Enabled
 
 	jobs, err := s.client.GetPrintJobs(ctx)
 	if err != nil {
 		slog.Error("web: failed to fetch print jobs", "error", err)
-		data.Err = "Failed to load print jobs: " + err.Error()
+		data.Err = []string{"Failed to load print jobs: " + err.Error()}
 		s.render(w, s.queueTmpl, data)
 		return
 	}
@@ -59,7 +57,7 @@ func (s *Server) handleQueue(w http.ResponseWriter, r *http.Request) {
 	printers, err := s.client.GetPrinters(ctx)
 	if err != nil {
 		slog.Error("web: failed to fetch printers", "error", err)
-		data.Err = "Failed to load printers: " + err.Error()
+		data.Err = []string{"Failed to load printers: " + err.Error()}
 		s.render(w, s.queueTmpl, data)
 		return
 	}
@@ -67,7 +65,7 @@ func (s *Server) handleQueue(w http.ResponseWriter, r *http.Request) {
 	slots, err := s.client.GetPrinterSlots(ctx)
 	if err != nil {
 		slog.Error("web: failed to fetch printer slots", "error", err)
-		data.Err = "Failed to load printer slots: " + err.Error()
+		data.Err = []string{"Failed to load printer slots: " + err.Error()}
 		s.render(w, s.queueTmpl, data)
 		return
 	}
@@ -76,7 +74,7 @@ func (s *Server) handleQueue(w http.ResponseWriter, r *http.Request) {
 	materials, err := s.client.GetMaterials(ctx)
 	if err != nil {
 		slog.Error("web: failed to fetch materials", "error", err)
-		data.Err = "Failed to load materials: " + err.Error()
+		data.Err = []string{"Failed to load materials: " + err.Error()}
 		s.render(w, s.queueTmpl, data)
 		return
 	}
@@ -88,7 +86,7 @@ func (s *Server) handleQueue(w http.ResponseWriter, r *http.Request) {
 	variants, err := s.client.GetMaterialVariants(ctx)
 	if err != nil {
 		slog.Error("web: failed to fetch material variants", "error", err)
-		data.Err = "Failed to load material variants: " + err.Error()
+		data.Err = []string{"Failed to load material variants: " + err.Error()}
 		s.render(w, s.queueTmpl, data)
 		return
 	}
@@ -101,6 +99,7 @@ func (s *Server) handleQueue(w http.ResponseWriter, r *http.Request) {
 	assignmentsMap := fetchAllPartAssignments(ctx, s.client, jobs)
 	plan = s.currentPlan()
 	data.SmartQueueOn = plan != nil && plan.Enabled
+	data.Err = queueBanner(flash, plan)
 
 	normalEntries := make([]queueEntry, 0, len(jobs))
 	lowEntries := make([]queueEntry, 0)
@@ -121,6 +120,21 @@ func (s *Server) handleQueue(w http.ResponseWriter, r *http.Request) {
 	data.NormalEntries = normalEntries
 	data.LowEntries = lowEntries
 	s.render(w, s.queueTmpl, data)
+}
+
+func queueBanner(query string, plan *smartqueue.Plan) []string {
+	var planErr string
+	if plan != nil {
+		planErr = plan.Err
+	}
+	var msgs []string
+	if query != "" {
+		msgs = append(msgs, query)
+	}
+	if planErr != "" && planErr != query {
+		msgs = append(msgs, planErr)
+	}
+	return msgs
 }
 
 // currentPlan reads the cached plan. A nil scheduler is the same as a plan that has not been published yet.

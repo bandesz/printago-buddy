@@ -116,6 +116,40 @@ func TestEmptyQueuePage(t *testing.T) {
 	}
 }
 
+func TestQueueBanner(t *testing.T) {
+	api := &recordingClient{jobs: []printago.PrintJob{sharedCopy("copy-old", time.Hour)}}
+
+	t.Run("plan error", func(t *testing.T) {
+		srv := newBannerServer(t, api, &smartqueue.Plan{Err: "poll failed"})
+		html := renderQueue(t, srv)
+		assertBannerTexts(t, html, "poll failed")
+	})
+
+	t.Run("query error", func(t *testing.T) {
+		srv := newBannerServer(t, api, &smartqueue.Plan{})
+		html := renderQueueURL(t, srv, "/queue?error="+url.QueryEscape("disk full"))
+		assertBannerTexts(t, html, "disk full")
+	})
+
+	t.Run("both differ", func(t *testing.T) {
+		srv := newBannerServer(t, api, &smartqueue.Plan{Err: "poll failed"})
+		html := renderQueueURL(t, srv, "/queue?error="+url.QueryEscape("disk full"))
+		assertBannerTexts(t, html, "disk full", "poll failed")
+	})
+
+	t.Run("both equal", func(t *testing.T) {
+		srv := newBannerServer(t, api, &smartqueue.Plan{Err: "disk full"})
+		html := renderQueueURL(t, srv, "/queue?error="+url.QueryEscape("disk full"))
+		assertBannerTexts(t, html, "disk full")
+	})
+
+	t.Run("nil snapshot query", func(t *testing.T) {
+		srv := newBannerServer(t, api, nil)
+		html := renderQueueURL(t, srv, "/queue?error="+url.QueryEscape("disk full"))
+		assertBannerTexts(t, html, "disk full")
+	})
+}
+
 const (
 	confirmTurnOn  = "Turn on smart queue? Printago will stop automatic matching, and Buddy will choose which job each printer runs."
 	confirmTurnOff = "Turn off smart queue? This removes printer assignments and park tags and turns Printago automatic matching back on."
@@ -266,9 +300,10 @@ type stubScheduler struct {
 	disables    int
 	prioritized []string
 	err         error
+	plan        *smartqueue.Plan
 }
 
-func (s *stubScheduler) Snapshot() *smartqueue.Plan { return nil }
+func (s *stubScheduler) Snapshot() *smartqueue.Plan { return s.plan }
 
 func (s *stubScheduler) Enable(context.Context) error {
 	s.enables++
@@ -433,13 +468,51 @@ func newQueuePage(t *testing.T, api *recordingClient) (*Server, *smartqueue.Sche
 
 func renderQueue(t *testing.T, srv *Server) string {
 	t.Helper()
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/queue", nil)
+	return renderQueueURL(t, srv, "/queue")
+}
+
+func renderQueueURL(t *testing.T, srv *Server, rawURL string) string {
+	t.Helper()
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, rawURL, nil)
 	rec := httptest.NewRecorder()
 	srv.handleQueue(rec, req)
 	if rec.Code != http.StatusOK {
-		t.Fatalf("GET /queue status = %d, body:\n%s", rec.Code, rec.Body.String())
+		t.Fatalf("GET %s status = %d, body:\n%s", rawURL, rec.Code, rec.Body.String())
 	}
 	return rec.Body.String()
+}
+
+func newBannerServer(t *testing.T, api *recordingClient, plan *smartqueue.Plan) *Server {
+	t.Helper()
+	return newSwitchServer(t, api, &stubScheduler{plan: plan})
+}
+
+func assertBannerTexts(t *testing.T, html string, texts ...string) {
+	t.Helper()
+	if n := strings.Count(html, `<div class="error">`); n != 1 {
+		t.Fatalf(".error count = %d, want 1:\n%s", n, html)
+	}
+	banner := errorBanner(t, html)
+	for _, text := range texts {
+		if strings.Count(banner, text) != 1 {
+			t.Fatalf("banner = %q, want %q once", banner, text)
+		}
+	}
+}
+
+func errorBanner(t *testing.T, html string) string {
+	t.Helper()
+	const open = `<div class="error">`
+	i := strings.Index(html, open)
+	if i < 0 {
+		t.Fatalf("error banner missing:\n%s", html)
+	}
+	rest := html[i+len(open):]
+	end := strings.Index(rest, "</div>")
+	if end < 0 {
+		t.Fatalf("error banner is not closed:\n%s", html)
+	}
+	return rest[:end]
 }
 
 func assignmentCells(t *testing.T, html string) []string {
