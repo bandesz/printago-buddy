@@ -174,6 +174,59 @@ func (s *Scheduler) Disable(ctx context.Context) error {
 	return nil
 }
 
+// Prioritize marks jobID so it outweighs other jobs in its lane.
+// The id is saved before any Printago write. A second click does nothing.
+// With the switch off, the first click moves the job to the front of the Printago queue.
+// With the switch on, reservations are rewritten and move-to-front is not called.
+func (s *Scheduler) Prioritize(ctx context.Context, jobID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	state, err := LoadState(s.cfg.StateFile)
+	if err != nil {
+		return err
+	}
+	if slices.Contains(state.PrioritizedJobIDs, jobID) {
+		return nil
+	}
+	state.PrioritizedJobIDs = append(state.PrioritizedJobIDs, jobID)
+	if err = SaveState(s.cfg.StateFile, state); err != nil {
+		return err
+	}
+	if !state.Enabled {
+		if err = s.client.PrioritizePrintJob(ctx, jobID); err != nil {
+			state.PrioritizedJobIDs = removeID(state.PrioritizedJobIDs, jobID)
+			if saveErr := SaveState(s.cfg.StateFile, state); saveErr != nil {
+				return saveErr
+			}
+			return err
+		}
+	}
+	return s.recompute(ctx, state)
+}
+
+// recompute publishes a fresh plan from the saved state without waiting for the next poll.
+func (s *Scheduler) recompute(ctx context.Context, state State) error {
+	jobs, err := s.client.GetPrintJobs(ctx)
+	if err != nil {
+		return err
+	}
+	printers, err := s.client.GetPrinters(ctx)
+	if err != nil {
+		return err
+	}
+	slots, err := s.client.GetPrinterSlots(ctx)
+	if err != nil {
+		return err
+	}
+	groups, err := s.loadGroups(ctx, jobs)
+	if err != nil {
+		return err
+	}
+	input := signatureInput(jobs, printers, slots, groups, state.PrioritizedJobIDs)
+	return s.publishRecomputed(ctx, state, jobs, printers, groups, AssignmentSignature(input), DispatchSignature(input))
+}
+
 // Poll reads the pending queue and publishes the assignment plan.
 // It patches Printago when the switch is on and a signature changed, and when a
 // turn-on settings patch, reservation diff, or queue run is still unfinished.
@@ -631,6 +684,16 @@ func reserveJobs(jobs []printago.PrintJob) []ReserveJob {
 		out[i] = ReserveJob{ID: job.ID, RequiredTags: job.RequiredPrinterTags}
 	}
 	return out
+}
+
+func removeID(ids []string, drop string) []string {
+	kept := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if id != drop {
+			kept = append(kept, id)
+		}
+	}
+	return kept
 }
 
 func idSet(ids []string) map[string]struct{} {

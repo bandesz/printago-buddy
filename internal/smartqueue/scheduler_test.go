@@ -928,33 +928,37 @@ type tagPatch struct {
 }
 
 type enableAPI struct {
-	settings           printago.StoreSettings
-	settingsErr        error
-	updateErr          error
-	updates            []printago.StoreSettingsUpdate
-	jobs               []printago.PrintJob
-	jobsErr            error
-	printers           []printago.Printer
-	groups             printago.GroupMatchingResult
-	groupErr           error
-	groupIDs           [][]string
-	trouble            printago.MatchingTroubleshootResult
-	troubleErr         error
-	troubleIDs         []string
-	tagPatches         []tagPatch
-	tagErr             error
-	runErr             error
-	runCalls           int
-	calls              []string
-	statePath          string
-	enabledAtGet       bool
-	enabledAtPatch     bool
-	stateAtPatch       smartqueue.State
-	slots              []printago.PrinterSlot
-	slotsErr           error
-	printersErr        error
-	groupScript        []scriptedMatch
-	prioritizedAtMatch []string
+	settings             printago.StoreSettings
+	settingsErr          error
+	updateErr            error
+	updates              []printago.StoreSettingsUpdate
+	jobs                 []printago.PrintJob
+	jobsErr              error
+	printers             []printago.Printer
+	groups               printago.GroupMatchingResult
+	groupErr             error
+	groupIDs             [][]string
+	trouble              printago.MatchingTroubleshootResult
+	troubleErr           error
+	troubleIDs           []string
+	tagPatches           []tagPatch
+	tagErr               error
+	runErr               error
+	runCalls             int
+	calls                []string
+	statePath            string
+	enabledAtGet         bool
+	enabledAtPatch       bool
+	stateAtPatch         smartqueue.State
+	slots                []printago.PrinterSlot
+	slotsErr             error
+	printersErr          error
+	groupScript          []scriptedMatch
+	prioritizedAtMatch   []string
+	moveErr              error
+	moved                []string
+	stateAtMove          smartqueue.State
+	prioritizedAtReserve []string
 }
 
 type scriptedMatch struct {
@@ -969,6 +973,10 @@ func (a *enableAPI) resetCalls() {
 	a.runCalls = 0
 	a.enabledAtPatch = false
 	a.stateAtPatch = smartqueue.State{}
+	a.prioritizedAtMatch = nil
+	a.moved = nil
+	a.stateAtMove = smartqueue.State{}
+	a.prioritizedAtReserve = nil
 }
 
 func (a *enableAPI) setOlderWins() {
@@ -1051,11 +1059,25 @@ func (a *enableAPI) GetPartMaterialAssignments(context.Context, string) ([]print
 
 func (a *enableAPI) CancelPrintJob(context.Context, string) error { return nil }
 
-func (a *enableAPI) PrioritizePrintJob(context.Context, string) error { return nil }
+func (a *enableAPI) PrioritizePrintJob(_ context.Context, id string) error {
+	a.calls = append(a.calls, "move-to-front")
+	a.moved = append(a.moved, id)
+	if a.statePath != "" {
+		if state, err := smartqueue.LoadState(a.statePath); err == nil {
+			a.stateAtMove = state
+		}
+	}
+	return a.moveErr
+}
 
 func (a *enableAPI) UpdatePrintJobTags(_ context.Context, id string, tags map[string]string) error {
 	a.calls = append(a.calls, "update-tags")
 	a.tagPatches = append(a.tagPatches, tagPatch{id: id, tags: maps.Clone(tags)})
+	if a.prioritizedAtReserve == nil && a.statePath != "" {
+		if state, err := smartqueue.LoadState(a.statePath); err == nil {
+			a.prioritizedAtReserve = append([]string(nil), state.PrioritizedJobIDs...)
+		}
+	}
 	return a.tagErr
 }
 
@@ -1830,6 +1852,253 @@ func TestPollSlotChangeRecomputes(t *testing.T) {
 	}
 	if env.api.runCalls != 1 {
 		t.Fatalf("RunQueue calls = %d, want 1 after a printer tag change", env.api.runCalls)
+	}
+}
+
+func TestPrioritizeBeatsOlderNormalJob(t *testing.T) {
+	env := newEnableEnv(t)
+
+	if err := env.sched.Prioritize(context.Background(), "young"); err != nil {
+		t.Fatalf("Prioritize() error = %v", err)
+	}
+
+	snap := env.sched.Snapshot()
+	assertRow(t, snap, "young", smartqueue.Row{PrinterID: "p1", PrinterName: "Alpha", Status: smartqueue.StatusAssigned})
+	assertRow(t, snap, "old", smartqueue.Row{Status: smartqueue.StatusWaiting})
+	assertState(t, env.path, smartqueue.State{PrioritizedJobIDs: []string{"keep", "young"}})
+	if snap.Enabled || snap.Err != "" {
+		t.Fatalf("Snapshot() = %+v, want the switch off and no error", snap)
+	}
+}
+
+func TestPrioritizeLowDoesNotBeatNormal(t *testing.T) {
+	env := newEnableEnv(t)
+	normal := pendingJob("normal", time.Hour)
+	low := pendingJob("low", 2*time.Hour)
+	low.Priority = smartqueue.LowPriority
+	env.api.jobs = []printago.PrintJob{normal, low}
+	env.api.groups = oneGroup("normal", []string{"normal", "low"}, "p1", true, "")
+
+	if err := env.sched.Prioritize(context.Background(), "low"); err != nil {
+		t.Fatalf("Prioritize() error = %v", err)
+	}
+
+	snap := env.sched.Snapshot()
+	assertRow(t, snap, "normal", smartqueue.Row{PrinterID: "p1", PrinterName: "Alpha", Status: smartqueue.StatusAssigned})
+	assertRow(t, snap, "low", smartqueue.Row{Status: smartqueue.StatusWaiting})
+	assertState(t, env.path, smartqueue.State{PrioritizedJobIDs: []string{"keep", "low"}})
+	for _, job := range env.api.jobs {
+		if job.ID == "low" && job.Priority != smartqueue.LowPriority {
+			t.Fatalf("low priority = %d, want %d", job.Priority, smartqueue.LowPriority)
+		}
+	}
+}
+
+func TestPrioritizeWhileOffMovesToFrontOnce(t *testing.T) {
+	env := newEnableEnv(t)
+
+	if err := env.sched.Prioritize(context.Background(), "young"); err != nil {
+		t.Fatalf("Prioritize() error = %v", err)
+	}
+	if !slices.Equal(env.api.moved, []string{"young"}) {
+		t.Fatalf("move-to-front = %#v, want [young]", env.api.moved)
+	}
+	if slices.Contains(env.api.calls, "update-tags") || slices.Contains(env.api.calls, "run-queue") {
+		t.Fatalf("calls = %v, want no job tag patch and no queue run", env.api.calls)
+	}
+	assertCallOrder(t, env.api.calls, "move-to-front", "group-matching")
+	if !slices.Equal(env.api.stateAtMove.PrioritizedJobIDs, []string{"keep", "young"}) {
+		t.Fatalf("state at move-to-front = %+v, want young saved first", env.api.stateAtMove)
+	}
+	first := env.sched.Snapshot()
+	assertRow(t, first, "young", smartqueue.Row{PrinterID: "p1", PrinterName: "Alpha", Status: smartqueue.StatusAssigned})
+	calls := len(env.api.calls)
+
+	if err := env.sched.Prioritize(context.Background(), "young"); err != nil {
+		t.Fatalf("second Prioritize() error = %v", err)
+	}
+	second := env.sched.Snapshot()
+	if second.Enabled != first.Enabled || second.Err != first.Err || !maps.Equal(first.Rows, second.Rows) {
+		t.Fatalf("plan = %+v, want %+v", second, first)
+	}
+	if len(env.api.moved) != 1 || len(env.api.calls) != calls {
+		t.Fatalf("calls = %v, moved = %#v, want no second move-to-front", env.api.calls, env.api.moved)
+	}
+	assertState(t, env.path, smartqueue.State{PrioritizedJobIDs: []string{"keep", "young"}})
+}
+
+func TestPrioritizeMoveToFrontFailureClearsTheMark(t *testing.T) {
+	env := newEnableEnv(t)
+	env.api.moveErr = errors.New("move failed")
+	before := env.sched.Snapshot()
+
+	err := env.sched.Prioritize(context.Background(), "young")
+	if !errors.Is(err, env.api.moveErr) {
+		t.Fatalf("Prioritize() error = %v, want %v", err, env.api.moveErr)
+	}
+	if !slices.Equal(env.api.moved, []string{"young"}) {
+		t.Fatalf("move-to-front = %#v, want one call", env.api.moved)
+	}
+	if !slices.Equal(env.api.stateAtMove.PrioritizedJobIDs, []string{"keep", "young"}) {
+		t.Fatalf("state at move-to-front = %+v, want the mark saved before the call", env.api.stateAtMove)
+	}
+	assertState(t, env.path, smartqueue.State{PrioritizedJobIDs: []string{"keep"}})
+	after := env.sched.Snapshot()
+	if (before == nil) != (after == nil) || (after != nil && !maps.Equal(before.Rows, after.Rows)) {
+		t.Fatalf("Snapshot() = %+v, want %+v", after, before)
+	}
+	if slices.Contains(env.api.calls, "update-tags") {
+		t.Fatalf("calls = %v, want no job tag patch", env.api.calls)
+	}
+}
+
+func TestPrioritizeStateFileErrorDoesNotMoveToFront(t *testing.T) {
+	api := &enableAPI{}
+	api.setOlderWins()
+	path := blockedStatePath(t)
+	sched := smartqueue.NewScheduler(api, smartqueue.Config{HalfLife: time.Hour, StateFile: path})
+
+	err := sched.Prioritize(context.Background(), "young")
+	if err == nil {
+		t.Fatal("Prioritize() error = nil, want a state file error")
+	}
+	if len(api.moved) != 0 || slices.Contains(api.calls, "move-to-front") {
+		t.Fatalf("calls = %v, want no move-to-front", api.calls)
+	}
+	if _, loadErr := smartqueue.LoadState(path); loadErr == nil {
+		t.Fatal("LoadState() succeeded, want no state file")
+	}
+	if sched.Snapshot() != nil {
+		t.Fatalf("Snapshot() = %+v, want nil", sched.Snapshot())
+	}
+}
+
+func TestPrioritizeWhileOnDoesNotMoveToFront(t *testing.T) {
+	t.Run("ready printer runs the queue", func(t *testing.T) {
+		env := newEnableEnv(t)
+		saveSchedulerState(t, env.path, smartqueue.State{Enabled: true, HasMergingSnapshot: true})
+		if err := env.sched.Poll(context.Background()); err != nil {
+			t.Fatalf("Poll() error = %v", err)
+		}
+		env.api.resetCalls()
+
+		if err := env.sched.Prioritize(context.Background(), "young"); err != nil {
+			t.Fatalf("Prioritize() error = %v", err)
+		}
+
+		if len(env.api.moved) != 0 || slices.Contains(env.api.calls, "move-to-front") {
+			t.Fatalf("calls = %v, want no move-to-front", env.api.calls)
+		}
+		snap := env.sched.Snapshot()
+		assertEnabled(t, snap)
+		assertRow(t, snap, "young", smartqueue.Row{PrinterID: "p1", PrinterName: "Alpha", Status: smartqueue.StatusAssigned})
+		assertRow(t, snap, "old", smartqueue.Row{Status: smartqueue.StatusWaiting})
+		if !slices.Equal(env.api.prioritizedAtReserve, []string{"young"}) {
+			t.Fatalf("prioritized ids at reserve = %#v, want [young] before the tag patch", env.api.prioritizedAtReserve)
+		}
+		assertCallOrder(t, env.api.calls, "update-tags", "run-queue")
+		if env.api.runCalls != 1 {
+			t.Fatalf("RunQueue calls = %d, want 1", env.api.runCalls)
+		}
+		assertState(t, env.path, smartqueue.State{
+			Enabled:            true,
+			HasMergingSnapshot: true,
+			PrioritizedJobIDs:  []string{"young"},
+		})
+
+		env.api.printers[0].Name = "Beta"
+		env.api.resetCalls()
+		if err := env.sched.Poll(context.Background()); err != nil {
+			t.Fatalf("Poll() error = %v", err)
+		}
+		assertRow(t, env.sched.Snapshot(), "young", smartqueue.Row{
+			PrinterID: "p1", PrinterName: "Alpha", Status: smartqueue.StatusAssigned,
+		})
+		if len(env.api.tagPatches) != 0 || env.api.runCalls != 0 || len(env.api.moved) != 0 {
+			t.Fatalf("calls = %v, patches %#v, want an idle poll", env.api.calls, env.api.tagPatches)
+		}
+	})
+
+	t.Run("printer that is not ready does not run the queue", func(t *testing.T) {
+		env := newEnableEnv(t)
+		saveSchedulerState(t, env.path, smartqueue.State{Enabled: true, HasMergingSnapshot: true})
+		env.api.setSingleJob("job-1", true, "ready")
+		if err := env.sched.Poll(context.Background()); err != nil {
+			t.Fatalf("Poll() error = %v", err)
+		}
+		env.api.resetCalls()
+
+		if err := env.sched.Prioritize(context.Background(), "job-1"); err != nil {
+			t.Fatalf("Prioritize() error = %v", err)
+		}
+
+		if len(env.api.moved) != 0 {
+			t.Fatalf("move-to-front = %#v, want none", env.api.moved)
+		}
+		assertRow(t, env.sched.Snapshot(), "job-1", smartqueue.Row{
+			PrinterID: "p1", PrinterName: "Alpha", Status: smartqueue.StatusAssigned,
+		})
+		if env.api.runCalls != 0 {
+			t.Fatalf("RunQueue calls = %d, want 0", env.api.runCalls)
+		}
+		assertState(t, env.path, smartqueue.State{
+			Enabled:            true,
+			HasMergingSnapshot: true,
+			PrioritizedJobIDs:  []string{"job-1"},
+		})
+	})
+}
+
+func TestPrioritizeReservationFailureKeepsPublishedPlan(t *testing.T) {
+	env := newEnableEnv(t)
+	saveSchedulerState(t, env.path, smartqueue.State{Enabled: true, HasMergingSnapshot: true})
+	if err := env.sched.Poll(context.Background()); err != nil {
+		t.Fatalf("Poll() error = %v", err)
+	}
+	before := env.sched.Snapshot()
+	env.api.tagErr = errors.New("tag patch")
+	env.api.resetCalls()
+
+	err := env.sched.Prioritize(context.Background(), "young")
+	if !errors.Is(err, env.api.tagErr) {
+		t.Fatalf("Prioritize() error = %v, want %v", err, env.api.tagErr)
+	}
+	failed := env.sched.Snapshot()
+	assertEnabled(t, failed)
+	if failed.Err != err.Error() || !maps.Equal(before.Rows, failed.Rows) {
+		t.Fatalf("snapshot = %+v, want err and rows %#v", failed, before.Rows)
+	}
+	if len(env.api.moved) != 0 || slices.Contains(env.api.calls, "move-to-front") {
+		t.Fatalf("calls = %v, want no move-to-front", env.api.calls)
+	}
+	if !slices.Equal(env.api.prioritizedAtReserve, []string{"young"}) {
+		t.Fatalf("prioritized ids at reserve = %#v, want [young]", env.api.prioritizedAtReserve)
+	}
+	assertState(t, env.path, smartqueue.State{
+		Enabled:            true,
+		HasMergingSnapshot: true,
+		PrioritizedJobIDs:  []string{"young"},
+	})
+
+	env.api.tagErr = nil
+	env.api.printers[0].Name = "Beta"
+	env.api.resetCalls()
+	if err = env.sched.Poll(context.Background()); err != nil {
+		t.Fatalf("Poll() error = %v", err)
+	}
+	snap := env.sched.Snapshot()
+	if snap.Err != "" {
+		t.Fatalf("Err = %q, want empty after the retry", snap.Err)
+	}
+	assertRow(t, snap, "young", smartqueue.Row{
+		PrinterID: "p1", PrinterName: "Alpha", Status: smartqueue.StatusAssigned,
+	})
+	assertRow(t, snap, "old", smartqueue.Row{Status: smartqueue.StatusWaiting})
+	if len(env.api.tagPatches) == 0 {
+		t.Fatal("reservation diff was not retried")
+	}
+	if len(env.api.moved) != 0 {
+		t.Fatalf("move-to-front = %#v, want none on the retry", env.api.moved)
 	}
 }
 
