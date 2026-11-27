@@ -128,8 +128,8 @@
         <tr>
             <th>Job</th>
             <th>Materials</th>
-            {{if not .SmartQueueOn}}<th>Best Matching Printers</th>{{end}}
             <th>Assignment</th>
+            {{if not .SmartQueueOn}}<th>Best Matching Printers</th>{{end}}
             <th class="col-actions"></th>
         </tr>
     </thead>
@@ -152,6 +152,7 @@
                 </div>
             </td>
             <td>{{template "materials" .JobMaterials}}</td>
+            <td class="assignment">{{.Assignment}}</td>
             {{if not $.SmartQueueOn}}
             <td>
                 <div class="printer-list">
@@ -175,7 +176,6 @@
                 </div>
             </td>
             {{end}}
-            <td class="assignment">{{.Assignment}}</td>
             <td class="col-actions">
                 <form method="POST" action="/prioritize-job">
                     <input type="hidden" name="id" value="{{.Job.ID}}">
@@ -210,6 +210,7 @@
                 </div>
             </td>
             <td>{{template "materials" .JobMaterials}}</td>
+            <td class="assignment">{{.Assignment}}</td>
             {{if not $.SmartQueueOn}}
             <td>
                 <div class="printer-list">
@@ -233,7 +234,6 @@
                 </div>
             </td>
             {{end}}
-            <td class="assignment">{{.Assignment}}</td>
             <td class="col-actions">
                 <form method="POST" action="/prioritize-job">
                     <input type="hidden" name="id" value="{{.Job.ID}}">

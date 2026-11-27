@@ -45,6 +45,10 @@ func TestQueuePageDoesNotMatchOnReload(t *testing.T) {
 	if !strings.Contains(html, "Best Matching Printers") {
 		t.Fatalf("best-matching printers column missing while smart queue is off:\n%s", html)
 	}
+	if strings.Index(html, "<th>Assignment</th>") > strings.Index(html, "<th>Best Matching Printers</th>") ||
+		strings.Index(html, `<td class="assignment">`) > strings.Index(html, `class="printer-list"`) {
+		t.Fatalf("Assignment column is not left of Best Matching Printers:\n%s", html)
+	}
 	if !strings.Contains(html, ">Prioritize<") || !strings.Contains(html, ">Cancel<") {
 		t.Fatalf("Prioritize or Cancel missing:\n%s", html)
 	}
