@@ -301,6 +301,7 @@ type stubScheduler struct {
 	prioritized []string
 	err         error
 	plan        *smartqueue.Plan
+	halfLife    string
 }
 
 func (s *stubScheduler) Snapshot() *smartqueue.Plan { return s.plan }
@@ -317,6 +318,18 @@ func (s *stubScheduler) Disable(context.Context) error {
 
 func (s *stubScheduler) Prioritize(_ context.Context, jobID string) error {
 	s.prioritized = append(s.prioritized, jobID)
+	return s.err
+}
+
+func (s *stubScheduler) HalfLife() string {
+	if s.halfLife == "" {
+		return "1h"
+	}
+	return s.halfLife
+}
+
+func (s *stubScheduler) SetHalfLife(_ context.Context, raw string) error {
+	s.halfLife = raw
 	return s.err
 }
 
@@ -737,4 +750,46 @@ func (c *recordingClient) MatchingTroubleshoot(context.Context, string) (printag
 func (c *recordingClient) RunQueue(context.Context) error {
 	c.calls = append(c.calls, "run-queue")
 	return nil
+}
+
+func TestQueueHalfLife(t *testing.T) {
+	api := &recordingClient{}
+	srv, sched := newQueuePage(t, api)
+
+	html := renderQueue(t, srv)
+	form := elementByID(t, html, "half-life")
+	if !strings.Contains(form, `action="/half-life"`) || !strings.Contains(form, `value="1h"`) {
+		t.Fatalf("half-life form = %s, want action /half-life and value 1h", form)
+	}
+
+	rec := postForm(t, srv, "/half-life", url.Values{"halfLife": {"30m"}})
+	assertSeeOther(t, rec, "/queue")
+	if sched.HalfLife() != "30m" {
+		t.Fatalf("HalfLife() = %q, want 30m", sched.HalfLife())
+	}
+	html = renderQueue(t, srv)
+	if !strings.Contains(elementByID(t, html, "half-life"), `value="30m"`) {
+		t.Fatalf("saved half-life missing from page:\n%s", html)
+	}
+
+	rec = postForm(t, srv, "/half-life", url.Values{"halfLife": {"abc"}})
+	assertSeeOther(t, rec, "/queue?error=Invalid%20half-life%3A%20abc")
+	if sched.HalfLife() != "30m" {
+		t.Fatalf("HalfLife() = %q, want 30m after invalid save", sched.HalfLife())
+	}
+	html = renderQueueURL(t, srv, rec.Header().Get("Location"))
+	assertBannerTexts(t, html, "Invalid half-life: abc")
+	if !strings.Contains(elementByID(t, html, "half-life"), `value="30m"`) {
+		t.Fatalf("invalid half-life changed the saved value:\n%s", html)
+	}
+
+	for _, raw := range []string{"", "0", "-1s"} {
+		rec = postForm(t, srv, "/half-life", url.Values{"halfLife": {raw}})
+		if rec.Code != http.StatusSeeOther {
+			t.Fatalf("POST halfLife=%q status = %d, want 303", raw, rec.Code)
+		}
+		if sched.HalfLife() != "30m" {
+			t.Fatalf("HalfLife() = %q after %q, want 30m", sched.HalfLife(), raw)
+		}
+	}
 }

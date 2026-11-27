@@ -43,7 +43,7 @@ Buddy instead weights each pending job by age, `2^(age / half-life)`, matches no
 - The park tag text is `buddy-hold`. No printer is given that tag.
 - `printer.id` is set to the printer's id.
 - `user.tags` is either empty or an AND-list `&=tag1,tag2`. Any other expression fails that pass.
-- Half-life defaults to `1h` (`QUEUE_WEIGHT_HALF_LIFE`). Poll defaults to `15s` (`QUEUE_POLL_INTERVAL`). State file defaults to `/data/smart-queue.json` (`SMART_QUEUE_STATE_FILE`).
+- Half-life defaults to `1h` and is set on the queue page (stored in the smart queue state file). Poll defaults to `15s` (`QUEUE_POLL_INTERVAL`). State file defaults to `/data/smart-queue.json` (`SMART_QUEUE_STATE_FILE`).
 - Invalid duration configuration fails process startup.
 - Docker Compose mounts a volume at `/data`. The image creates `/data` owned by `app`.
 - `ready`, `staggered-start-hold`, and `subscription-slots` do not remove an edge.

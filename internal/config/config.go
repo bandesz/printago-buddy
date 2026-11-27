@@ -11,7 +11,6 @@ import (
 
 const (
 	defaultWebPort             = 8889
-	defaultQueueWeightHalfLife = time.Hour
 	defaultQueuePollInterval   = 15 * time.Second
 	defaultSmartQueueStateFile = "/data/smart-queue.json"
 )
@@ -21,7 +20,6 @@ type Config struct {
 	APIKey              string
 	StoreID             string
 	WebPort             int
-	QueueWeightHalfLife time.Duration
 	QueuePollInterval   time.Duration
 	SmartQueueStateFile string
 }
@@ -55,15 +53,10 @@ func Load() (*Config, error) {
 		return nil, errors.New("PRINTAGO_STORE_ID environment variable is required")
 	}
 
-	halfLife, err := positiveDuration("QUEUE_WEIGHT_HALF_LIFE", defaultQueueWeightHalfLife)
-	if err != nil {
-		return nil, err
-	}
 	poll, err := positiveDuration("QUEUE_POLL_INTERVAL", defaultQueuePollInterval)
 	if err != nil {
 		return nil, err
 	}
-	cfg.QueueWeightHalfLife = halfLife
 	cfg.QueuePollInterval = poll
 
 	return cfg, nil

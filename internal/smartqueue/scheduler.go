@@ -7,13 +7,16 @@ import (
 	"maps"
 	"os"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/bandesz/printago-buddy/internal/printago"
 )
 
-// Config is the scheduler's half-life, poll interval, and state file.
+// Config is the scheduler's poll interval and state file.
+// HalfLife is a fallback used only when the state file has no half-life.
+// A zero HalfLife means DefaultHalfLife.
 type Config struct {
 	HalfLife     time.Duration
 	PollInterval time.Duration
@@ -75,6 +78,62 @@ func (s *Scheduler) Snapshot() *Plan {
 	return s.cache.Snapshot()
 }
 
+// HalfLife is the saved age-weight half-life, or 1h when the state file does not set one.
+func (s *Scheduler) HalfLife() string {
+	state, err := LoadState(s.cfg.StateFile)
+	if err == nil {
+		if text := strings.TrimSpace(state.HalfLife); text != "" {
+			if _, parseErr := ParseHalfLife(text); parseErr == nil {
+				return text
+			}
+		}
+	}
+	if s.cfg.HalfLife > 0 {
+		if s.cfg.HalfLife == time.Hour {
+			return "1h"
+		}
+		return s.cfg.HalfLife.String()
+	}
+	return "1h"
+}
+
+// SetHalfLife saves a positive Go duration and recomputes the plan.
+func (s *Scheduler) SetHalfLife(ctx context.Context, raw string) error {
+	text := strings.TrimSpace(raw)
+	if text == "" {
+		return ErrInvalidHalfLife
+	}
+	if _, err := ParseHalfLife(text); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	state, err := LoadState(s.cfg.StateFile)
+	if err != nil {
+		return err
+	}
+	state.HalfLife = text
+	if err = SaveState(s.cfg.StateFile, state); err != nil {
+		return err
+	}
+	return s.recompute(ctx, state)
+}
+
+// halfLife is the duration used for the next plan.
+// A saved state value wins. Otherwise a positive Config.HalfLife is used, then 1h.
+func (s *Scheduler) halfLife(state State) time.Duration {
+	if strings.TrimSpace(state.HalfLife) != "" {
+		if d, err := ParseHalfLife(state.HalfLife); err == nil {
+			return d
+		}
+	}
+	if s.cfg.HalfLife > 0 {
+		return s.cfg.HalfLife
+	}
+	return DefaultHalfLife
+}
+
 // Enable turns smart queue on.
 // It saves enabled and the merging snapshot, pauses Printago matching and merging,
 // reserves the new plan, and runs the queue when an assigned printer is ready.
@@ -126,7 +185,7 @@ func (s *Scheduler) Enable(ctx context.Context) error {
 		Jobs:         planJobs(jobs),
 		PrinterNames: printerNames(printers),
 		Groups:       groups,
-		HalfLife:     s.cfg.HalfLife,
+		HalfLife:     s.halfLife(state),
 		Now:          time.Now(),
 		Prioritized:  idSet(state.PrioritizedJobIDs),
 	})
@@ -248,7 +307,7 @@ func (s *Scheduler) recompute(ctx context.Context, state State) error {
 	if err != nil {
 		return err
 	}
-	input := signatureInput(jobs, printers, slots, groups, state.PrioritizedJobIDs)
+	input := signatureInput(jobs, printers, slots, groups, state.PrioritizedJobIDs, s.halfLife(state))
 	return s.publishRecomputed(ctx, state, jobs, printers, groups, AssignmentSignature(input), DispatchSignature(input))
 }
 
@@ -287,7 +346,7 @@ func (s *Scheduler) Poll(ctx context.Context) error {
 		return s.failPublish(err)
 	}
 
-	input := signatureInput(jobs, printers, slots, groups, state.PrioritizedJobIDs)
+	input := signatureInput(jobs, printers, slots, groups, state.PrioritizedJobIDs, s.halfLife(state))
 	assignSig := AssignmentSignature(input)
 	dispatchSig := DispatchSignature(input)
 	assignmentChanged := !s.hasSig || assignSig != s.assignmentSig
@@ -325,7 +384,7 @@ func (s *Scheduler) publishRecomputed(ctx context.Context, state State, jobs []p
 		Jobs:         planJobs(jobs),
 		PrinterNames: printerNames(printers),
 		Groups:       groups,
-		HalfLife:     s.cfg.HalfLife,
+		HalfLife:     s.halfLife(state),
 		Now:          time.Now(),
 		Prioritized:  idSet(state.PrioritizedJobIDs),
 	})
@@ -498,7 +557,7 @@ func (s *Scheduler) storeSigs(assignment, dispatch string) {
 	s.dispatchSig = dispatch
 }
 
-func signatureInput(jobs []printago.PrintJob, printers []printago.Printer, slots []printago.PrinterSlot, groups []PlanGroup, prioritized []string) SignatureInput {
+func signatureInput(jobs []printago.PrintJob, printers []printago.Printer, slots []printago.PrinterSlot, groups []PlanGroup, prioritized []string, halfLife time.Duration) SignatureInput {
 	sigJobs := make([]SignatureJob, len(jobs))
 	for i, job := range jobs {
 		sigJobs[i] = SignatureJob{
@@ -528,6 +587,7 @@ func signatureInput(jobs []printago.PrintJob, printers []printago.Printer, slots
 		Jobs:              sigJobs,
 		Printers:          sigPrinters,
 		PrioritizedJobIDs: prioritized,
+		HalfLife:          halfLife,
 	}
 }
 

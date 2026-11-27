@@ -4,6 +4,8 @@ golangci-lint = "2.15.0"
 
 [env]
 _.file = ".env"
+QUEUE_POLL_INTERVAL = "15s"
+SMART_QUEUE_STATE_FILE = ".data/smart-queue.json"
 
 [tasks.dev]
 description = "Run the server locally"

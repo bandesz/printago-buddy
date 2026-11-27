@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"sort"
+	"time"
 )
 
 // SignatureJob is a managed job or a merged-plate child in the signature input.
@@ -35,6 +36,7 @@ type SignatureInput struct {
 	Jobs              []SignatureJob
 	Printers          []SignaturePrinter
 	PrioritizedJobIDs []string
+	HalfLife          time.Duration
 }
 
 // AssignmentSignature digests the inputs that change job-to-printer pairs.
@@ -56,6 +58,7 @@ type digestDoc struct {
 	Printers    []digestPrinter `json:"printers"`
 	Prioritized []string        `json:"prioritized,omitempty"`
 	Ready       []digestReady   `json:"ready,omitempty"`
+	HalfLife    int64           `json:"halfLife,omitempty"`
 }
 
 type digestJob struct {
@@ -94,11 +97,15 @@ type digestReady struct {
 }
 
 func assignmentDoc(in SignatureInput) digestDoc {
-	return digestDoc{
+	doc := digestDoc{
 		Jobs:        digestJobs(in.Jobs),
 		Printers:    digestPrinters(in.Printers),
 		Prioritized: canonicalIDs(in.PrioritizedJobIDs),
 	}
+	if in.HalfLife > 0 {
+		doc.HalfLife = int64(in.HalfLife)
+	}
+	return doc
 }
 
 func signatureDigest(doc digestDoc) string {

@@ -2379,6 +2379,41 @@ func saveSchedulerState(t *testing.T, path string, state smartqueue.State) {
 	}
 }
 
+func TestSetHalfLife(t *testing.T) {
+	env := newEnableEnv(t)
+	if err := env.sched.SetHalfLife(context.Background(), "2h"); err != nil {
+		t.Fatal(err)
+	}
+	state, err := smartqueue.LoadState(env.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.HalfLife != "2h" || !slices.Equal(state.PrioritizedJobIDs, []string{"keep"}) {
+		t.Fatalf("state = %+v, want half-life 2h and prioritized keep", state)
+	}
+	if env.sched.HalfLife() != "2h" {
+		t.Fatalf("HalfLife() = %q, want 2h", env.sched.HalfLife())
+	}
+	if snap := env.sched.Snapshot(); snap == nil {
+		t.Fatal("Snapshot() = nil, want a recomputed plan")
+	}
+
+	before := state
+	for _, raw := range []string{"", "0", "-1s", "abc"} {
+		err = env.sched.SetHalfLife(context.Background(), raw)
+		if !errors.Is(err, smartqueue.ErrInvalidHalfLife) {
+			t.Fatalf("SetHalfLife(%q) error = %v, want ErrInvalidHalfLife", raw, err)
+		}
+	}
+	state, err = smartqueue.LoadState(env.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.HalfLife != before.HalfLife || !slices.Equal(state.PrioritizedJobIDs, before.PrioritizedJobIDs) {
+		t.Fatalf("state = %+v, want unchanged %+v", state, before)
+	}
+}
+
 func assertPollReads(t *testing.T, api *enableAPI) {
 	t.Helper()
 	for _, call := range []string{"get-jobs", "get-printers", "get-slots", "group-matching"} {

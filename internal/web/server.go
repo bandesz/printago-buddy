@@ -23,6 +23,8 @@ type queueScheduler interface {
 	Enable(ctx context.Context) error
 	Disable(ctx context.Context) error
 	Prioritize(ctx context.Context, jobID string) error
+	HalfLife() string
+	SetHalfLife(ctx context.Context, raw string) error
 }
 
 // Server serves the Printago Buddy web UI.
@@ -78,6 +80,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("/smart-queue", s.handleSmartQueue)
 	mux.HandleFunc("/cancel-job", s.handleCancelJob)
 	mux.HandleFunc("/prioritize-job", s.handlePrioritizeJob)
+	mux.HandleFunc("/half-life", s.handleHalfLife)
 	return mux
 }
 

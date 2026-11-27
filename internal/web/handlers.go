@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -27,6 +28,7 @@ type queuePageData struct {
 	LowEntries    []queueEntry
 	Err           []string
 	SmartQueueOn  bool
+	HalfLife      string
 }
 
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
@@ -41,7 +43,7 @@ func (s *Server) handleQueue(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 
-	data := queuePageData{Page: "queue"}
+	data := queuePageData{Page: "queue", HalfLife: s.halfLifeText()}
 	flash := r.URL.Query().Get("error")
 	plan := s.currentPlan()
 	data.SmartQueueOn = plan != nil && plan.Enabled
@@ -143,6 +145,42 @@ func (s *Server) currentPlan() *smartqueue.Plan {
 		return nil
 	}
 	return s.scheduler.Snapshot()
+}
+
+func (s *Server) halfLifeText() string {
+	if s.scheduler == nil {
+		return "1h"
+	}
+	return s.scheduler.HalfLife()
+}
+
+func (s *Server) handleHalfLife(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 1024)
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	raw := r.FormValue("halfLife")
+	if s.scheduler == nil {
+		redirectQueue(w, r, "Failed to save half-life: smart queue is not running")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	if err := s.scheduler.SetHalfLife(ctx, raw); err != nil {
+		if errors.Is(err, smartqueue.ErrInvalidHalfLife) {
+			redirectQueue(w, r, "Invalid half-life: "+raw)
+			return
+		}
+		slog.Error("web: failed to save half-life", "error", err)
+		redirectQueue(w, r, "Failed to save half-life: "+err.Error())
+		return
+	}
+	redirectQueue(w, r, "")
 }
 
 func (s *Server) handleSmartQueue(w http.ResponseWriter, r *http.Request) {

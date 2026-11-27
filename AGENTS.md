@@ -63,14 +63,13 @@ golangci-lint run ./...
 
 ## Configuration
 
-The daemon is configured exclusively via environment variables:
+The daemon reads secrets and process settings from environment variables. The age-weight half-life is set on the queue page and stored in the smart queue state file (default `1h`).
 
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `PRINTAGO_API_KEY` | yes | Printago API key (prefixed `ApiKey` internally) |
 | `PRINTAGO_STORE_ID` | yes | Printago store ID |
 | `WEB_PORT` | no | Port for the web UI (default: `8889`) |
-| `QUEUE_WEIGHT_HALF_LIFE` | no | Age-weight half-life for smart queue (default: `1h`) |
 | `QUEUE_POLL_INTERVAL` | no | Smart queue poll interval (default: `15s`) |
 | `SMART_QUEUE_STATE_FILE` | no | Smart queue state file (default: `/data/smart-queue.json`) |
 
@@ -79,7 +78,7 @@ The process exits immediately on startup if either required variable is missing.
 ## Code Structure
 
 - `cmd/printago-buddy/main.go` — entry point; loads config, wraps the API client with `CachingClient`, starts the smart queue scheduler, registers cron jobs, passes the scheduler to the web server, blocks on `SIGINT`/`SIGTERM`, cancels the scheduler without turning smart queue off, and stops cron
-- `internal/config/` — loads and validates environment-variable configuration (including optional `WEB_PORT`, `QUEUE_WEIGHT_HALF_LIFE`, `QUEUE_POLL_INTERVAL`, and `SMART_QUEUE_STATE_FILE`)
+- `internal/config/` — loads and validates environment-variable configuration (including optional `WEB_PORT`, `QUEUE_POLL_INTERVAL`, and `SMART_QUEUE_STATE_FILE`)
 - `internal/smartqueue/` — smart queue scheduler; `Run` polls immediately and then on `QUEUE_POLL_INTERVAL`
 - `internal/printago/` — Printago REST API client and type definitions
   - `types.go` — `Printer`, `PrinterSlot`, `Material`, `MaterialVariant`, `PrintJob`, `PartMaterialAssignment` and related types
@@ -88,7 +87,7 @@ The process exits immediately on startup if either required variable is missing.
 - `internal/jobs/` — cron job implementations
   - `filament_tagger.go` — `FilamentTaggerJob`
 - `internal/web/` — HTTP server and print queue UI
-  - `server.go` — `Server`; stores the smart queue scheduler, registers routes (`/queue`, `/smart-queue`, `/cancel-job`, `/prioritize-job`), and serves on `WEB_PORT`
+  - `server.go` — `Server`; stores the smart queue scheduler, registers routes (`/queue`, `/smart-queue`, `/half-life`, `/cancel-job`, `/prioritize-job`), and serves on `WEB_PORT`
   - `handlers.go` — request handlers; fetches jobs/printers/slots/materials concurrently and renders the queue page
   - `matcher.go` — `RankPrinters`; ranks printers by filament compatibility for a given job's `PartMaterialAssignment` list
   - `templates/` — embedded HTML templates

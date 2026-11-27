@@ -26,7 +26,6 @@ func main() {
 
 	client := printago.NewCachingClient(printago.NewClient(cfg.APIKey, cfg.StoreID))
 	scheduler := smartqueue.NewScheduler(client, smartqueue.Config{
-		HalfLife:     cfg.QueueWeightHalfLife,
 		PollInterval: cfg.QueuePollInterval,
 		StateFile:    cfg.SmartQueueStateFile,
 	})

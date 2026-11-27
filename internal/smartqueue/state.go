@@ -6,14 +6,37 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 )
 
-// State is the smart queue file: the switch, the merging snapshot, and prioritize ids.
+// DefaultHalfLife is the age-weight half-life when the state file does not set one.
+const DefaultHalfLife = time.Hour
+
+// ErrInvalidHalfLife is returned when a half-life is empty, unparseable, or not positive.
+var ErrInvalidHalfLife = errors.New("invalid half-life")
+
+// State is the smart queue file: the switch, the merging snapshot, prioritize ids, and half-life.
 type State struct {
 	Enabled            bool     `json:"enabled"`
 	HasMergingSnapshot bool     `json:"hasMergingSnapshot"`
 	AutomaticMerging   bool     `json:"automaticMerging"`
 	PrioritizedJobIDs  []string `json:"prioritizedJobIds"`
+	HalfLife           string   `json:"halfLife,omitempty"`
+}
+
+// ParseHalfLife parses a Go duration. An empty value is DefaultHalfLife.
+// Zero, negative, and unparseable values return ErrInvalidHalfLife.
+func ParseHalfLife(raw string) (time.Duration, error) {
+	text := strings.TrimSpace(raw)
+	if text == "" {
+		return DefaultHalfLife, nil
+	}
+	d, err := time.ParseDuration(text)
+	if err != nil || d <= 0 {
+		return 0, ErrInvalidHalfLife
+	}
+	return d, nil
 }
 
 // LoadState reads the state file at path.

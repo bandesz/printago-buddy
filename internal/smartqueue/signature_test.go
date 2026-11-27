@@ -2,6 +2,7 @@ package smartqueue_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/bandesz/printago-buddy/internal/smartqueue"
 )
@@ -467,4 +468,18 @@ func setPassed(in *smartqueue.SignatureInput, printer int, code string, passed b
 		}
 	}
 	in.Printers[printer].Checks = append(in.Printers[printer].Checks, smartqueue.Check{Code: code, Passed: passed})
+}
+
+func TestAssignmentSignatureHalfLife(t *testing.T) {
+	base := sampleInput()
+	changed := sampleInput()
+	changed.HalfLife = time.Hour
+	if smartqueue.AssignmentSignature(base) == smartqueue.AssignmentSignature(changed) {
+		t.Fatal("assignment signature ignored half-life")
+	}
+	same := sampleInput()
+	same.HalfLife = 60 * time.Minute
+	if smartqueue.AssignmentSignature(changed) != smartqueue.AssignmentSignature(same) {
+		t.Fatal("1h and 60m produced different assignment signatures")
+	}
 }

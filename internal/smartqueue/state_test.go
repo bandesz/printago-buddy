@@ -2,10 +2,12 @@ package smartqueue_test
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/bandesz/printago-buddy/internal/smartqueue"
 )
@@ -116,5 +118,21 @@ func TestStateDirectoryCannotBeCreated(t *testing.T) {
 	}
 	if string(data) != "blocker" {
 		t.Fatalf("blocker content = %q, want unchanged", data)
+	}
+}
+
+func TestParseHalfLife(t *testing.T) {
+	d, err := smartqueue.ParseHalfLife("")
+	if err != nil || d != time.Hour {
+		t.Fatalf("ParseHalfLife(\"\") = %v, %v, want 1h", d, err)
+	}
+	d, err = smartqueue.ParseHalfLife(" 30m ")
+	if err != nil || d != 30*time.Minute {
+		t.Fatalf("ParseHalfLife(\" 30m \") = %v, %v", d, err)
+	}
+	for _, raw := range []string{"0", "-1s", "abc"} {
+		if _, err = smartqueue.ParseHalfLife(raw); !errors.Is(err, smartqueue.ErrInvalidHalfLife) {
+			t.Fatalf("ParseHalfLife(%q) error = %v, want ErrInvalidHalfLife", raw, err)
+		}
 	}
 }
